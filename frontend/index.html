@@ -1,0 +1,1203 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>落球法测液体粘滞系数实验 AI 学习平台</title>
+    <link rel="icon" href="./assets/generated/icons/calibration.png" />
+    <link rel="stylesheet" href="./styles.css?v=auto-calibration-endpoint-v91" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <main class="main system-main">
+        <header class="topbar app-bar">
+          <div class="brand top-brand">
+            <span class="brand-icon">
+              <svg viewBox="0 0 24 24" fill="none">
+                <path d="M12 3v18M6 7h12M8 19h8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
+                <circle cx="12" cy="13.5" r="3" stroke="currentColor" stroke-width="1.8" />
+              </svg>
+            </span>
+            <div>
+              <strong>AI视觉落球法测粘系统</strong>
+              <span>实验学习平台</span>
+            </div>
+          </div>
+          <div class="view-heading">
+            <p class="eyebrow" id="viewEyebrow">实验数据系统</p>
+            <h1 id="viewTitle">落球法测液体粘滞系数实验 AI 学习平台</h1>
+            <p class="positioning-line" id="viewSubtitle">导入真实轨迹或实验视频，完成数据入口、标定准备和曲线分析，保存可复盘记录。</p>
+          </div>
+          <div class="top-actions">
+            <button class="ghost-button hall-button" type="button" data-go-view="dashboard" hidden>
+              <img class="button-art" src="./assets/generated/buttons/refresh-records.png" alt="" />
+              <span>返回大厅</span>
+            </button>
+            <button id="refreshBtn" class="ghost-button" type="button">
+              <img class="button-art" src="./assets/generated/buttons/refresh-records.png" alt="" />
+              <span>刷新记录</span>
+            </button>
+          </div>
+        </header>
+
+        <div class="view-stack">
+          <section class="app-view gate-view active" id="view-gate" data-view="gate">
+            <section class="gate-layout">
+              <section class="panel gate-entry" id="gateEntryPanel">
+                <div class="section-title">
+                  <div>
+                    <h2>预习检测</h2>
+                  </div>
+                </div>
+                <div class="gate-entry-copy">
+                  <strong><span>阅读讲义&nbsp;&nbsp;完成试题</span><span>通过测试&nbsp;&nbsp;方可实验</span></strong>
+                  <p>讲义阅读完成后进入准入测试。测试通过后，系统将开放 AI 实验测量、虚拟仿真和实验记录分析功能。</p>
+                </div>
+              </section>
+              <section class="gate-visual release-stage" id="gateVisualPanel" aria-label="下拉小球开始实验">
+                <img class="release-apparatus" src="./assets/generated/gate-release-apparatus-noball.png" alt="落球法实验释放装置" />
+                <div class="release-track" aria-hidden="true">
+                  <span></span>
+                  <i></i>
+                </div>
+                <div class="release-magnet" aria-hidden="true"></div>
+                <button id="releaseBallBtn" class="release-ball" type="button" aria-label="向下拉动小球开始实验">
+                  <span></span>
+                </button>
+                <div class="release-hint">
+                  <strong>向下拉动小球开始实验</strong>
+                </div>
+              </section>
+
+              <section class="panel lecture-panel" id="lecturePanel" hidden>
+                <div class="section-title">
+                  <div>
+                    <p class="eyebrow">实验讲义</p>
+                    <h2>基于 AI 视觉的落球法液体粘滞系数智能测量系统</h2>
+                  </div>
+                  <a class="ghost-button lecture-download" href="./assets/docs/ai-vision-falling-ball-lecture.docx" download>
+                    <img class="button-art" src="./assets/generated/buttons/export-report.png" alt="" />
+                    <span>下载讲义</span>
+                  </a>
+                </div>
+                <div class="lecture-brief">
+                  <span>阅读要求</span>
+                  <p>请先完整阅读讲义内容，理解传统落球法原理、传统实验步骤、创新实验原理和创新实验步骤。阅读到底部后即可进入准入题目。</p>
+                </div>
+                <div class="lecture-reader" id="lectureReader" tabindex="0" aria-label="实验讲义阅读区">
+                  <article>
+                    <h3>学习目标与平台任务</h3>
+                    <p>本平台服务于“落球法测量液体粘滞系数”的学习、实验。学生先通过讲义与准入测试理解核心物理量，再进入实验大厅使用 AI 实验、虚拟仿真、误差诊断和历史记录等模块完成完整实验闭环。</p>
+                    <h3>传统实验原理</h3>
+                    <p>当半径为 r 的光滑圆球，以速度 v 在均匀的无限宽广液体中运动时，若速度不大，球也很小，且液体中不产生涡流，斯托克斯指出小球所受到的阻力为：</p>
+                    <div class="lecture-formula">F = 6πηrv</div>
+                    <p>式中 η 为液体的黏度。由此可知，阻力 F 的大小和物体运动速度成比例。</p>
+                    <p>当质量为 m、体积为 V 的小球在密度为 ρ 的液体中下落时，作用在小球上的力有三个：重力 mg、液体浮力 ρVg、液体黏性阻力 F。这三个力都作用在同一铅垂线上，重力向下，浮力和阻力向上。小球刚开始下落时速度较小，阻尼力不大，小球加速下降；随着速度增加，阻力逐渐增大，当阻力和浮力之和等于重力时，小球开始匀速下落。</p>
+                    <div class="lecture-formula">mg = ρVg + 6πηrv</div>
+                    <p>此时的速度称为终极速度。由上式可得：</p>
+                    <div class="lecture-formula">η = (m − ρV)g / (6πrv)</div>
+                    <p>将 V = 4πr³/3 代入上式，可得：</p>
+                    <div class="lecture-formula">η = (m − 4πr³ρ/3)g / (6πrv)</div>
+                    <h3>创新实验原理</h3>
+                    <p>理想斯托克斯公式成立需要满足严格物理条件。</p>
+                    <ol>
+                      <li>层流条件：小球运动时液体流动为对称层流、无湍流，要求雷诺数 Re 远小于 1，其中 d 为小球直径，r 为小球半径，d = 2r。</li>
+                      <li>刚性光滑球体在液体中进行匀速直线运动。小球应无形变、不旋转，并以下落过程中的终端速度匀速直线运动。</li>
+                      <li>无限广延的静止液体，即忽略容器壁对流动的干扰。创新实验中优先使用大口径容器以减小壁面效应。</li>
+                      <li>液体为不可压缩的牛顿流体，甘油、硅油等常见牛顿流体适用，非牛顿流体不适用。</li>
+                      <li>无滑移边界条件，即小球表面液体相对速度为零。球表面污染、液体中存在气泡、小球形变、杂质或液面表面张力异常时可能破坏该条件。</li>
+                    </ol>
+                    <p>由于液体在圆筒容器中，并不满足无限宽广条件，实际测得速度 v₀ 和理想条件下速度 v 存在关系：</p>
+                    <div class="lecture-formula">v = v₀(1 + 2.4r/R)(1 + 3.3r/h)</div>
+                    <p>式中 R 为盛液圆筒的内半径，h 为筒中液体的深度。考虑容器条件后可得：</p>
+                    <div class="lecture-formula">η = [(m − 4πr³ρ/3)g / (6πrv₀)](1 + 2.4r/R)(1 + 3.3r/h)</div>
+                    <p>其次，斯托克斯公式是假设在无涡流的理想状态下导出的。实际小球下落时不可能完全理想，因此还要进行雷诺数修正：</p>
+                    <div class="lecture-formula">Re = 2rv₀ρ / η</div>
+                    <div class="lecture-formula">F = 6πrvη(1 + 3Re/16 − 19Re²/1080)</div>
+                    <div class="lecture-formula">η₀ = η(1 + 3Re/16 − 19Re²/1080)</div>
+                    <p>实验时，先求出近似值 η，用此 η 代入公式求出 Re，最后求出最佳值 η₀。实验时 AI 同时计算理想斯托克斯公式与考虑壁面修正及雷诺数修正两种结果。</p>
+                    <h3>传统实验步骤</h3>
+                    <ol>
+                      <li>将待测液体注入量筒，液面高度约为量筒的 2/3～3/4。静置一段时间，一般 30 分钟以上，使液体温度均匀并与室温平衡。</li>
+                      <li>用游标卡尺测量量筒内径 D，在不同高度处测量 3 次取平均值。在量筒外壁粘贴两条水平标记线，或利用量筒自身刻度线。上标记线位于液面下方约 5～10 cm 处，下标记线位于量筒底部上方约 5～10 cm 处。用米尺测量两条标记线之间的垂直距离 L，精确到毫米。</li>
+                      <li>准备三种半径不同的钢球各 15 颗，先用纱布将钢球表面的油吸干，再用乙醚、酒精混合液清洗并擦干。单颗钢球选取正交 3 个不同方位用螺旋测微器测直径，求平均直径。</li>
+                      <li>用镊子夹住钢球，在量筒中心轴线上方同一高度静止释放，用秒表测量钢球通过 L1 和 L2 间距的时间 t。每种相同半径的钢球分别测量 10 次，剔除异常数据后记录数据。</li>
+                      <li>实验完成后，用磁铁将钢球取出量筒，并按要求整理实验仪器、处理数据。</li>
+                    </ol>
+                  </article>
+                </div>
+                <div class="lecture-actions">
+                  <div id="lectureProgress" class="lecture-progress">阅读进度 0%</div>
+                  <button id="startQuizBtn" class="primary-button exam-start-button" type="button" disabled>
+                    <img class="button-art" src="./assets/generated/buttons/run-analysis.png" alt="" />
+                    <span>已读完，开始答题</span>
+                  </button>
+                </div>
+              </section>
+
+              <section class="panel quiz-panel" id="quizPanel" hidden>
+                <div class="section-title">
+                  <div>
+                    <p class="eyebrow">考试系统</p>
+                    <h2>准入考试作答</h2>
+                  </div>
+                  <div class="score-chip compact-score">
+                    <span>得分</span>
+                    <strong id="quizScore">--</strong>
+                  </div>
+                </div>
+                <div class="exam-meta">
+                  <span>满分 100 分</span>
+                  <span>合格线 80 分</span>
+                  <span>传统原理 20 · 传统步骤 20 · 创新原理 25 · 创新步骤 35</span>
+                  <a class="exam-doc-link" href="./assets/docs/ai-vision-falling-ball-quiz.docx" download>下载试题</a>
+                  <strong id="examProgress">已作答 0/17</strong>
+                </div>
+                <form id="quizForm" class="quiz-form">
+                  <div id="quizQuestionList" class="quiz-question-list"></div>
+                  <div id="quizResult" class="quiz-result">完成测验后，系统会判断是否允许进入大厅。</div>
+                  <div class="quiz-actions">
+                    <button id="submitQuizBtn" class="primary-button" type="submit">
+                      <img class="button-art" src="./assets/generated/buttons/run-analysis.png" alt="" />
+                      <span>提交测验</span>
+                    </button>
+                    <button id="skipQuizBtn" class="ghost-button" type="button">
+                      <img class="button-art" src="./assets/generated/buttons/quick-refraction.png" alt="" />
+                      <span>跳过测试</span>
+                    </button>
+                    <button id="retryQuizBtn" class="ghost-button" type="button" hidden>
+                      <img class="button-art" src="./assets/generated/buttons/reset-params.png" alt="" />
+                      <span>再做一次</span>
+                    </button>
+                    <button id="enterHallBtn" class="primary-button" type="button" hidden>
+                      <img class="button-art" src="./assets/generated/buttons/refresh-records.png" alt="" />
+                      <span>进入实验大厅</span>
+                    </button>
+                  </div>
+                </form>
+                <section class="quiz-tutor-panel" id="quizTutorPanel" hidden>
+                  <div class="section-title">
+                    <div>
+                      <p class="eyebrow">AI 试题辅导</p>
+                      <h2>错题诊断与答疑</h2>
+                    </div>
+                  </div>
+                  <div id="quizTutorSummary" class="quiz-tutor-summary">提交测验后，系统会在这里给出错题、正确答案和解析。</div>
+                  <div id="quizTutorChat" class="quiz-tutor-chat" aria-live="polite"></div>
+                  <form id="quizTutorForm" class="chat-form quiz-tutor-form">
+                    <input id="quizTutorInput" type="text" placeholder="继续提问：例如为什么要拟合终端速度？" />
+                    <button class="primary-button" type="submit">
+                      <img class="button-art" src="./assets/generated/buttons/ask-assistant.png" alt="" />
+                      <span>提问</span>
+                    </button>
+                  </form>
+                </section>
+              </section>
+            </section>
+          </section>
+
+          <section class="app-view dashboard-view" id="view-dashboard" data-view="dashboard" hidden>
+            <section class="dashboard-layout">
+              <section class="panel mission-panel hall-panel">
+                <div class="hall-panel-actions">
+                  <button id="dashboardBackBtn" class="ghost-button compact-return-button" type="button">
+                    <img class="button-art" src="./assets/generated/buttons/reset-params.png" alt="" />
+                    <span>返回预习</span>
+                  </button>
+                </div>
+                <div class="entry-grid hall-entry-grid">
+                  <article>
+                    <img src="./assets/generated/module-p0.png" alt="" />
+                    <div>
+                      <span>AI实验</span>
+                      <strong>摄像机测量待测液体</strong>
+                      <p>通过固定摄像机采集落球视频，提取小球轨迹和速度曲线，再反推出待测液体粘滞系数。</p>
+                      <button class="primary-button" type="button" data-go-view="workspace">
+                        <img class="button-art" src="./assets/generated/buttons/run-analysis.png" alt="" />
+                        <span>进入AI实验</span>
+                      </button>
+                    </div>
+                  </article>
+                  <article>
+                    <img src="./assets/generated/module-p1.png" alt="" />
+                    <div>
+                      <span>虚拟仿真</span>
+                      <strong>已知液体输出小球速度</strong>
+                      <p>先选定液体和容器条件，仿真输出小球下落速度曲线，用来训练对照真实实验。</p>
+                      <button class="primary-button" type="button" data-go-view="simulation">
+                        <img class="button-art" src="./assets/generated/buttons/quick-refraction.png" alt="" />
+                        <span>进入虚拟仿真</span>
+                      </button>
+                    </div>
+                  </article>
+                  <article>
+                    <img src="./assets/generated/module-p2.png" alt="" />
+                    <div>
+                      <span>记录复盘</span>
+                      <strong>实验记录与结果复盘</strong>
+                      <p>检索每次真实轨迹分析数据，载入记录后围绕匀速段、Re 条件、壁效应和人工测量偏差进行问答诊断。</p>
+                      <button class="primary-button" type="button" data-go-view="diagnosis">
+                        <img class="button-art" src="./assets/generated/buttons/ask-assistant.png" alt="" />
+                        <span>查看记录与复盘</span>
+                      </button>
+                    </div>
+                  </article>
+                </div>
+              </section>
+            </section>
+          </section>
+
+          <section class="app-view workspace-view" id="view-workspace" data-view="workspace" hidden>
+        <section class="workspace workbench" id="measurement-workbench">
+          <section class="panel parameter-panel">
+            <div class="panel-title">
+              <div>
+                <p class="eyebrow">实验会话</p>
+                <h2>样本与仪器参数</h2>
+              </div>
+              <button id="presetBtn" class="icon-button" type="button" title="恢复默认参数" aria-label="恢复默认参数">
+                <img src="./assets/generated/buttons/reset-params.png" alt="" />
+              </button>
+            </div>
+
+            <div class="form-grid">
+              <label>
+                <span>样本液体</span>
+                <select id="liquid">
+                  <option value="纯甘油 25℃">纯甘油 25℃</option>
+                  <option value="500 cSt 硅油 25℃">500 cSt 硅油 25℃</option>
+                  <option value="纯甘油 20℃">纯甘油 20℃</option>
+                </select>
+              </label>
+              <label>
+                <span>温度 ℃</span>
+                <input id="temperatureC" type="number" value="25" step="0.1" />
+              </label>
+              <label>
+                <span>液体密度 kg/m³</span>
+                <input id="rhoLiquid" type="number" value="1261" step="1" />
+              </label>
+              <label>
+                <span>参考粘度 Pa·s</span>
+                <input id="etaReference" type="number" value="0.945" step="0.001" />
+              </label>
+              <label>
+                <span>小球半径 mm</span>
+                <input id="radiusMm" type="number" value="1.5" step="0.1" />
+              </label>
+              <label>
+                <span>小球密度 kg/m³</span>
+                <input id="rhoBall" type="number" value="7850" step="10" />
+              </label>
+              <label>
+                <span>量筒内径 mm</span>
+                <input id="tubeDiameterMm" type="number" value="35" step="1" />
+              </label>
+              <label>
+                <span>液体深度 mm</span>
+                <input id="liquidDepthMm" type="number" value="220" step="5" />
+              </label>
+            </div>
+
+            <div class="student-box">
+              <h3>人工测量值</h3>
+              <div class="form-grid two">
+                <label>
+                  <span>终端速度 m/s</span>
+                  <input id="studentV" type="number" step="0.0001" placeholder="可选" />
+                </label>
+                <label>
+                  <span>粘滞系数 Pa·s</span>
+                  <input id="studentEta" type="number" step="0.001" placeholder="可选" />
+                </label>
+              </div>
+            </div>
+          </section>
+
+          <section class="measurement-stage-grid" aria-label="AI实验实时工作台">
+          <section class="panel intake-panel" id="data-import">
+            <div class="panel-title">
+              <div>
+                <p class="eyebrow">摄像机数据</p>
+                <h2>AI实验测量入口</h2>
+              </div>
+              <span id="sourceStatus" class="badge">CSV可用</span>
+            </div>
+
+            <div class="source-tabs" aria-label="数据源类型">
+              <button class="active" data-source="trajectory" type="button">
+                <img src="./assets/generated/buttons/upload-trajectory.png" alt="" />
+                <span>轨迹CSV</span>
+              </button>
+              <button data-source="video" type="button">
+                <img src="./assets/generated/icons/calibration.png" alt="" />
+                <span>摄像机视频</span>
+              </button>
+              <button data-source="realtime" type="button">
+                <img src="./assets/generated/buttons/run-analysis.png" alt="" />
+                <span>OpenCV追踪</span>
+              </button>
+            </div>
+
+            <div class="drop-zone">
+              <div class="drop-copy">
+                <strong id="activeSourceName">轨迹 CSV</strong>
+                <p id="activeSourceDetail">导入时间-位移轨迹，后端直接进行速度曲线、匀速段和粘滞系数分析。</p>
+              </div>
+              <label class="file-picker">
+                <span>选择数据文件</span>
+                <input id="trajectoryInput" class="file-input" type="file" accept=".csv,text/csv" />
+              </label>
+              <div id="selectedFileName" class="selected-file">尚未选择文件</div>
+
+              <div id="videoImportPanel" class="video-import-panel" hidden>
+                <div class="video-frame">
+                  <video id="videoPreview" controls muted playsinline preload="metadata"></video>
+                  <div id="videoPlaceholder" class="video-placeholder">
+                    <span class="tracking-orbit" aria-hidden="true"></span>
+                    <strong>等待实验视频</strong>
+                    <small>预览画面将在这里显示</small>
+                  </div>
+                </div>
+                <div class="video-meta-grid" aria-label="视频元信息">
+                  <article>
+                    <span>时长</span>
+                    <strong id="videoDuration">--</strong>
+                  </article>
+                  <article>
+                    <span>分辨率</span>
+                    <strong id="videoResolution">--</strong>
+                  </article>
+                  <article>
+                    <span>文件大小</span>
+                    <strong id="videoSize">--</strong>
+                  </article>
+                  <article>
+                    <span>帧率</span>
+                    <strong id="videoFps">需后端解码</strong>
+                  </article>
+                </div>
+                <div class="video-readiness">
+                  <span id="videoReadinessLabel">等待视频</span>
+                  <p id="videoReadinessDetail">当前只读取视频元信息，不生成轨迹点或粘度结果。</p>
+                </div>
+              </div>
+
+              <div id="realtimeImportPanel" class="realtime-import-panel" hidden>
+                <div class="live-vision-layout">
+                  <div class="live-preview-frame">
+                    <video id="livePreview" muted playsinline autoplay></video>
+                    <div class="cylinder-center-overlay" aria-hidden="true">
+                      <span class="cylinder-width-guide"></span>
+                      <span class="cylinder-center-line"></span>
+                      <span id="ballOffsetMarker" class="ball-offset-marker" hidden></span>
+                    </div>
+                    <button id="cylinderEdgeClickLayer" class="cylinder-edge-click-layer" type="button" aria-label="点击量筒左右边缘" disabled>
+                      <span id="cylinderEdgeMarks" class="cylinder-edge-marks" aria-hidden="true"></span>
+                    </button>
+                    <div id="livePlaceholder" class="live-placeholder">
+                      <span class="tracking-orbit" aria-hidden="true"></span>
+                      <strong>等待手机实时画面</strong>
+                      <small>支持浏览器摄像头、手机投屏采集卡或 RTSP/NDI 转 WebRTC 服务接入</small>
+                    </div>
+                    <button id="calibrationClickLayer" class="calibration-click-layer" type="button" aria-label="按顺序点击标定棒刻度点" disabled>
+                      <span id="calibrationPointsLayer" class="calibration-points-layer" aria-hidden="true"></span>
+                      <span id="calibrationSegment" class="calibration-segment" hidden></span>
+                    </button>
+                    <div id="roiSelectionLayer" class="roi-selection-layer" hidden>
+                      <div id="roiBox" class="roi-box"></div>
+                    </div>
+                    <button id="toggleLiveZoomBtn" class="live-zoom-toggle" type="button">
+                      <span>放大画面</span>
+                    </button>
+                    <button id="exitCalibrationFullscreenBtn" class="exit-calibration-fullscreen" type="button" hidden>
+                      <span>退出放大</span>
+                    </button>
+                  </div>
+                  <div class="live-control-panel">
+                    <div class="live-status-grid">
+                      <article>
+                        <span>画面源</span>
+                        <strong id="liveCameraStatus">未连接</strong>
+                      </article>
+                      <article>
+                      <span>追踪模型</span>
+                        <strong id="liveModelStatus">OpenCV待运行</strong>
+                      </article>
+                      <article>
+                        <span>标定状态</span>
+                        <strong id="liveCalibrationStatus">待标定</strong>
+                      </article>
+                    </div>
+                    <div class="camera-picker">
+                      <label>
+                        <span>摄像头设备</span>
+                        <select id="liveCameraSelect">
+                          <option value="">默认摄像头</option>
+                        </select>
+                      </label>
+                      <button id="refreshCameraListBtn" class="ghost-button" type="button">
+                        <img class="button-art" src="./assets/generated/buttons/refresh-records.png" alt="" />
+                        <span>刷新设备</span>
+                      </button>
+                    </div>
+                    <div class="fall-offset-card" id="fallOffsetCard" data-state="idle">
+                      <div>
+                        <span>量筒中心偏移</span>
+                        <strong id="fallOffsetStatus">等待追踪</strong>
+                        <p id="fallOffsetDetail">点击“标注量筒边缘”后，依次点量筒左边缘和右边缘，系统自动计算中心线。</p>
+                      </div>
+                      <div class="edge-mark-actions">
+                        <button id="startCylinderEdgeMarkBtn" class="ghost-button" type="button">
+                          <img class="button-art" src="./assets/generated/buttons/quick-boundary.png" alt="" />
+                          <span>标注量筒边缘</span>
+                        </button>
+                        <button id="resetCylinderEdgeMarkBtn" class="ghost-button" type="button">
+                          <img class="button-art" src="./assets/generated/buttons/reset-params.png" alt="" />
+                          <span>重置边缘</span>
+                        </button>
+                      </div>
+                      <div class="fall-offset-form">
+                        <label>
+                          <span>中心线 %</span>
+                          <input id="cylinderCenterX" type="number" value="50" min="0" max="100" step="0.5" />
+                        </label>
+                        <label>
+                          <span>量筒宽度 %</span>
+                          <input id="cylinderWidthPct" type="number" value="72" min="10" max="100" step="1" />
+                        </label>
+                        <label>
+                          <span>偏移阈值</span>
+                          <input id="fallOffsetThreshold" type="number" value="18" min="2" max="45" step="1" />
+                        </label>
+                      </div>
+                    </div>
+                    <div class="live-actions">
+                      <div class="live-action-group">
+                        <span class="live-action-title">画面接入</span>
+                        <button id="startLiveCameraBtn" class="primary-button" type="button">
+                          <img class="button-art" src="./assets/generated/buttons/run-analysis.png" alt="" />
+                          <span>连接实时画面</span>
+                        </button>
+                        <button id="stopLiveCameraBtn" class="ghost-button" type="button" disabled>
+                          <img class="button-art" src="./assets/generated/buttons/reset-params.png" alt="" />
+                          <span>断开画面</span>
+                        </button>
+                      </div>
+                      <div class="live-action-group">
+                        <span class="live-action-title">标定操作</span>
+                        <button id="startCalibrationBtn" class="ghost-button" type="button" disabled>
+                          <img class="button-art" src="./assets/generated/buttons/quick-refraction.png" alt="" />
+                          <span>开始标定</span>
+                        </button>
+                        <button id="resetCalibrationBtn" class="ghost-button" type="button">
+                          <img class="button-art" src="./assets/generated/buttons/reset-params.png" alt="" />
+                          <span>重置标定</span>
+                        </button>
+                      </div>
+                      <div class="live-action-group">
+                        <span class="live-action-title">检测区域</span>
+                        <button id="startRoiSelectBtn" class="ghost-button" type="button" disabled>
+                          <span>🔲 框选检测区域</span>
+                        </button>
+                        <button id="clearRoiBtn" class="ghost-button" type="button" disabled>
+                          <span>清除选区</span>
+                        </button>
+                      </div>
+                      <div class="live-action-group">
+                        <span class="live-action-title">追踪计算</span>
+                        <button id="startLiveRecordBtn" class="primary-button secondary-live-action" type="button" disabled>
+                          <img class="button-art" src="./assets/generated/buttons/velocity-curve.png" alt="" />
+                          <span>开始实时追踪</span>
+                        </button>
+                        <button id="stopLiveRecordBtn" class="ghost-button" type="button" disabled>
+                          <img class="button-art" src="./assets/generated/buttons/upload-trajectory.png" alt="" />
+                          <span>停止并计算</span>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="calibration-rod-card">
+                  <div>
+                    <span>标定棒校正</span>
+                    <strong>点选刻度，建立真实高度映射</strong>
+                    <p>按间距自动生成点数；末点始终落在标定棒终点。</p>
+                  </div>
+                  <div class="rod-form-grid">
+                    <label>
+                      <span>标定棒直径 mm</span>
+                      <input id="calibrationRodDiameterMm" type="number" value="3" step="0.1" />
+                    </label>
+                    <label>
+                      <span>标定棒长度 mm</span>
+                      <input id="calibrationRodLengthMm" type="number" value="300" step="1" />
+                    </label>
+                    <label>
+                      <span>刻度间距 mm</span>
+                      <input id="rodTickSpacingMm" type="number" value="50" step="5" min="1" />
+                    </label>
+                    <label>
+                      <span>自动点数</span>
+                      <output id="calibrationRodSamples">7</output>
+                    </label>
+                  </div>
+                  <div class="calibration-result-strip">
+                    <article>
+                      <span>已选刻度</span>
+                      <strong id="calibrationPointStatus">未选择</strong>
+                    </article>
+                    <article>
+                      <span>像素跨度</span>
+                      <strong id="calibrationPixelDistance">--</strong>
+                    </article>
+                    <article>
+                      <span>平均比例</span>
+                      <strong id="calibrationScale">--</strong>
+                    </article>
+                  </div>
+                </div>
+
+                <div class="nonlinear-correction-card">
+                  <div>
+                    <span>免参数非线性修正</span>
+                    <strong>多点标定棒 · 双模型对比 · 实测映射</strong>
+                    <p>OpenCV 输出小球像素坐标后，系统使用同一组标定棒点击点拟合 Y_real = f(y_pixel)。可在分段插值和多项式修正之间切换，对比哪种更接近真实测量。</p>
+                  </div>
+                  <div class="nonlinear-toggle-row">
+                    <label class="switch-row">
+                      <input id="nonlinearCorrectionEnabled" type="checkbox" checked />
+                      <span>启用多点标定映射</span>
+                    </label>
+                    <div class="correction-mode-switch" role="group" aria-label="选择非线性修正方式">
+                      <button class="active" data-correction-mode="piecewise" type="button" aria-pressed="true">
+                        <span>分段插值</span>
+                      </button>
+                      <button data-correction-mode="polynomial" type="button" aria-pressed="false">
+                        <span>多项式修正</span>
+                      </button>
+                    </div>
+                  </div>
+                  <div class="nonlinear-guide">
+                    <article>
+                      <span>点击顺序</span>
+                      <strong>0 → 50 → 100 → ... → 300 mm</strong>
+                      <p>从标定棒上端开始，依次点击每个已知刻度。</p>
+                    </article>
+                    <article>
+                      <span>拟合方式</span>
+                      <strong id="correctionModeTitle">分段非线性插值</strong>
+                      <p id="correctionModeDetail">相邻刻度之间线性插值，局部误差不会扩散到整条标定棒。</p>
+                    </article>
+                  </div>
+                  <div class="nonlinear-status-strip">
+                    <article>
+                      <span>修正模型</span>
+                      <strong id="nonlinearCorrectionModel">多点标定映射</strong>
+                    </article>
+                    <article>
+                      <span>输入来源</span>
+                      <strong id="nonlinearCorrectionSource">等待刻度点</strong>
+                    </article>
+                    <article>
+                      <span>输出字段</span>
+                      <strong>corrected_y</strong>
+                    </article>
+                  </div>
+                </div>
+
+                <div class="live-pipeline">
+                  <article>
+                    <span>01</span>
+                    <strong>手机实时画面</strong>
+                    <p>手机通过同一局域网推流，或 USB/采集卡作为系统摄像头被浏览器读取。</p>
+                  </article>
+                  <article>
+                    <span>02</span>
+                    <strong>标定棒建模</strong>
+                    <p>点选中心标定棒刻度，生成像素到真实高度的非线性映射。</p>
+                  </article>
+                  <article>
+                    <span>03</span>
+                    <strong>小球视觉追踪</strong>
+                    <p>浏览器逐帧提交画面，后端 OpenCV 即时返回小球中心坐标。</p>
+                  </article>
+                  <article>
+                    <span>04</span>
+                    <strong>实时轨迹输出</strong>
+                    <p>边下落边生成 t、x、y、confidence 轨迹流，停止后自动拟合终端速度与粘度。</p>
+                  </article>
+                </div>
+
+                <div class="live-readiness">
+                  <span id="liveReadinessLabel">方案可实现</span>
+                  <p id="liveReadinessDetail">当前网页支持实时画面预览、逐帧提交后端 OpenCV 识别、边追踪边绘制曲线；停止后自动进入粘度计算。</p>
+                </div>
+              </div>
+            </div>
+
+            <div class="import-actions">
+              <button id="uploadTrajectoryBtn" class="primary-button" type="button">
+                <img class="button-art" src="./assets/generated/buttons/upload-trajectory.png" alt="" />
+                <span>分析已选CSV</span>
+              </button>
+            </div>
+
+            <div class="schema-panel">
+              <div>
+                <span>当前输入要求</span>
+                <strong id="sourceSchemaTitle">t, y 为必填列</strong>
+              </div>
+              <p id="sourceSchemaDetail">可选列：x、confidence、measured_y、corrected_y。单位默认 t/s、y/m。</p>
+            </div>
+
+            <div class="file-queue" id="fileQueue">
+              <article>
+                <span>等待数据</span>
+                <strong>等待真实轨迹文件</strong>
+                <p>选择 CSV 后会显示待分析文件和处理状态。</p>
+              </article>
+            </div>
+          </section>
+
+          <section class="panel stage-panel">
+            <div class="panel-title">
+              <div>
+                <p class="eyebrow">后端测量计算</p>
+                <h2>速度曲线与粘度结果</h2>
+              </div>
+              <span id="runBadge" class="badge">等待运行</span>
+            </div>
+
+            <section class="chart-area" aria-label="测量曲线区">
+              <div class="chart-tabs">
+                <button class="active" data-chart="position" type="button">
+                  <img src="./assets/generated/buttons/position-curve.png" alt="" />
+                  <span>位移曲线</span>
+                </button>
+                <button data-chart="velocity" type="button">
+                  <img src="./assets/generated/buttons/velocity-curve.png" alt="" />
+                  <span>速度曲线</span>
+                </button>
+              </div>
+              <canvas id="chart" width="1100" height="460" aria-label="测量曲线"></canvas>
+            </section>
+
+            <div class="result-insight-grid">
+              <div class="result-core">
+                <div class="metric-grid compact">
+                  <article class="metric primary">
+                    <span>终端速度 vt</span>
+                    <strong id="terminalVelocity">--</strong>
+                    <small>匀速段稳健拟合斜率</small>
+                  </article>
+                  <article class="metric">
+                    <span>理想 η</span>
+                    <strong id="idealViscosity">--</strong>
+                    <small>未加入壁效应与Re修正</small>
+                  </article>
+                  <article class="metric">
+                    <span>修正 η</span>
+                    <strong id="viscosity">--</strong>
+                    <small>壁效应 + Re二级修正</small>
+                  </article>
+                  <article class="metric">
+                    <span>R²</span>
+                    <strong id="r2">--</strong>
+                    <small>拟合稳定性</small>
+                  </article>
+                  <article class="metric">
+                    <span>Re</span>
+                    <strong id="re">--</strong>
+                    <small>适用条件判断</small>
+                  </article>
+                </div>
+
+                <div class="algorithm-strip" aria-label="算法质量指标">
+                  <article style="--i:0">
+                    <span>拟合方法</span>
+                    <strong id="fitMethod">--</strong>
+                  </article>
+                  <article style="--i:1">
+                    <span>降权坏点</span>
+                    <strong id="outlierCount">--</strong>
+                  </article>
+                  <article style="--i:2">
+                    <span>匀速段离散度</span>
+                    <strong id="segmentCv">--</strong>
+                  </article>
+                  <article style="--i:3">
+                    <span>追踪置信度</span>
+                    <strong id="trackingConfidence">--</strong>
+                  </article>
+                </div>
+              </div>
+            </div>
+
+            <div class="result-sidecar-grid">
+          <aside class="panel uncertainty-card workspace-uncertainty-panel" aria-label="不确定度分析">
+            <div class="uncertainty-head">
+              <div>
+                <p class="eyebrow">不确定度分析</p>
+                <h3>η 的合成不确定度</h3>
+              </div>
+              <span id="uncertaintyStatus">待导入</span>
+            </div>
+            <div class="uncertainty-formula">
+              <b>公式</b>
+              <div class="math-formula" aria-label="不确定度公式">
+                <span class="math-left">
+                  U<sub>r</sub> =
+                  <span class="frac"><span>Δη</span><span>η</span></span>
+                </span>
+                <span class="equals">=</span>
+                <span class="radical">
+                  <span class="radical-symbol">√</span>
+                  <span class="radical-body">
+                    <span class="term bracket-term">
+                      <span class="paren">(</span>
+                      <span class="frac"><span>2</span><span>d</span></span>
+                      <span class="op">−</span>
+                      <span class="frac">
+                        <span>2.4</span>
+                        <span>
+                          <span class="paren">(</span>1 +
+                          <span class="frac inline-frac"><span>2.4d</span><span>D</span></span>
+                          <span class="paren">)</span>D
+                        </span>
+                      </span>
+                      <span class="op">−</span>
+                      <span class="frac">
+                        <span>1.6</span>
+                        <span>
+                          <span class="paren">(</span>1 +
+                          <span class="frac inline-frac"><span>1.6d</span><span>H</span></span>
+                          <span class="paren">)</span>H
+                        </span>
+                      </span>
+                      <span class="paren">)</span>Δd
+                    </span>
+                    <sup>2</sup>
+                    <span class="op">+</span>
+                    <span class="term">
+                      <span class="paren">(</span>
+                      <span class="frac"><span>Δt</span><span>t</span></span>
+                      <span class="paren">)</span><sup>2</sup>
+                    </span>
+                    <span class="op">+</span>
+                    <span class="term">
+                      <span class="paren">(</span>−
+                      <span class="frac"><span>Δl</span><span>l</span></span>
+                      <span class="paren">)</span><sup>2</sup>
+                    </span>
+                    <span class="op">+</span>
+                    <span class="term">
+                      <span class="paren">(</span>
+                      <span class="frac">
+                        <span>2.4d</span>
+                        <span>
+                          <span class="paren">(</span>1 +
+                          <span class="frac inline-frac"><span>2.4d</span><span>D</span></span>
+                          <span class="paren">)</span>D<sup>2</sup>
+                        </span>
+                      </span>
+                      ΔD<span class="paren">)</span><sup>2</sup>
+                    </span>
+                    <span class="op">+</span>
+                    <span class="term">
+                      <span class="paren">(</span>
+                      <span class="frac">
+                        <span>1.6d</span>
+                        <span>
+                          <span class="paren">(</span>1 +
+                          <span class="frac inline-frac"><span>1.6d</span><span>H</span></span>
+                          <span class="paren">)</span>H<sup>2</sup>
+                        </span>
+                      </span>
+                      ΔH<span class="paren">)</span><sup>2</sup>
+                    </span>
+                  </span>
+                </span>
+              </div>
+              <small>采用文献中的相对不确定度传播式；本平台由小球半径自动换算 d=2r。</small>
+            </div>
+            <div class="uncertainty-input-grid">
+              <label>
+                <span>Δd mm</span>
+                <input id="uncertaintyDiameterMm" data-uncertainty-input type="number" value="0.01" min="0" step="0.001" />
+              </label>
+              <label>
+                <span>Δt s</span>
+                <input id="uncertaintyTimeS" data-uncertainty-input type="number" value="0.02" min="0" step="0.01" />
+              </label>
+              <label>
+                <span>Δl mm</span>
+                <input id="uncertaintyDistanceMm" data-uncertainty-input type="number" value="0.5" min="0" step="0.1" />
+              </label>
+              <label>
+                <span>ΔD mm</span>
+                <input id="uncertaintyTubeDiameterMm" data-uncertainty-input type="number" value="0.5" min="0" step="0.1" />
+              </label>
+              <label>
+                <span>ΔH mm</span>
+                <input id="uncertaintyLiquidDepthMm" data-uncertainty-input type="number" value="1" min="0" step="0.1" />
+              </label>
+            </div>
+            <div class="uncertainty-variable-note">
+              <span>d 小球直径</span>
+              <span>D 量筒内径</span>
+              <span>H 液体深度</span>
+              <span>l 匀速段距离</span>
+              <span>t 匀速段时间</span>
+            </div>
+            <div class="uncertainty-results">
+              <article>
+                <span>直径/修正项</span>
+                <strong id="uncertaintyDiameterTerm">--</strong>
+              </article>
+              <article>
+                <span>时间/距离项</span>
+                <strong id="uncertaintyTimingTerm">--</strong>
+              </article>
+              <article class="primary">
+                <span>合成相对不确定度</span>
+                <strong id="uncertaintyCombined">--</strong>
+              </article>
+              <article>
+                <span>标准不确定度 uη</span>
+                <strong id="uncertaintyStandard">--</strong>
+              </article>
+              <article>
+                <span>扩展不确定度 U(k=2)</span>
+                <strong id="uncertaintyExpanded">--</strong>
+              </article>
+            </div>
+            <p id="uncertaintyExpression" class="uncertainty-expression">导入轨迹后生成 η ± U 的结果表达。</p>
+          </aside>
+            </div>
+          </section>
+          </section>
+
+          <aside class="panel diagnostics-panel">
+            <div class="panel-title">
+              <div>
+                <p class="eyebrow">质量控制</p>
+                <h2>诊断队列</h2>
+              </div>
+              <div class="score-chip">
+                <span>评分</span>
+                <strong id="score">--</strong>
+              </div>
+            </div>
+            <div id="diagnostics" class="diagnostics"></div>
+            <a id="downloadReport" class="report-link disabled" href="#" download>
+              <img class="button-art" src="./assets/generated/buttons/export-report.png" alt="" />
+              <span>导出本次报告</span>
+            </a>
+          </aside>
+        </section>
+          </section>
+
+          <section class="app-view simulation-view" id="view-simulation" data-view="simulation" hidden>
+            <section class="simulation-layout">
+              <section class="panel simulation-control-panel">
+                <div class="section-title">
+                  <div>
+                    <p class="eyebrow">虚拟仿真</p>
+                    <h2>选定液体，输出小球速度</h2>
+                  </div>
+                </div>
+                <div class="form-grid">
+                  <label>
+                    <span>情境预设</span>
+                    <select id="simScenario">
+                      <option value="standard">纯甘油 25℃ · η 0.945 Pa·s</option>
+                      <option value="wall">纯甘油 20℃ · η 1.412 Pa·s</option>
+                      <option value="glare">500 cSt 硅油 25℃ · η 0.485 Pa·s</option>
+                      <option value="propylene_glycol_25">丙二醇 25℃ · η 48.6 mPa·s</option>
+                      <option value="ethylene_glycol_20">乙二醇 20℃ · η 19.8 mPa·s</option>
+                      <option value="ethanol_20">无水乙醇 20℃ · η 1.200 mPa·s</option>
+                      <option value="methanol_25">甲醇 25℃ · η 0.543 mPa·s</option>
+                      <option value="water_20">纯水 20℃ · η 1.0016 mPa·s</option>
+                    </select>
+                    <small id="simLiquidNote" class="field-note">ρ=1261 kg/m³，η=0.945 Pa·s，纯甘油 25℃表值。</small>
+                  </label>
+                  <label>
+                    <span>小球半径 mm</span>
+                    <input id="simRadiusMm" type="number" value="1.5" min="0.8" max="3.5" step="0.1" />
+                  </label>
+                  <label>
+                    <span>量筒内径 mm</span>
+                    <input id="simTubeMm" type="number" value="35" min="1" max="80" step="1" />
+                  </label>
+                  <label>
+                    <span>待测液体深度 mm</span>
+                    <input id="simDepthMm" type="number" value="220" min="1" max="500" step="1" />
+                  </label>
+                </div>
+                <div class="range-block simulation-ranges">
+                  <label>
+                    <span>初始扰动 <strong id="simReleaseValue">0%</strong></span>
+                    <input id="simRelease" type="range" value="0" min="0" max="1" step="0.01" />
+                  </label>
+                  <label>
+                    <span>介质阻尼扰动 <strong id="simRefractionValue">0%</strong></span>
+                    <input id="simRefraction" type="range" value="0" min="0" max="1" step="0.01" />
+                  </label>
+                  <label>
+                    <span>速度采样稳定性 <strong id="simLightingValue">100%</strong></span>
+                    <input id="simLighting" type="range" value="1" min="0.2" max="1" step="0.01" />
+                  </label>
+                </div>
+                <div class="quiz-actions">
+                  <button id="runSimulationBtn" class="primary-button" type="button">
+                    <img class="button-art" src="./assets/generated/buttons/run-analysis.png" alt="" />
+                    <span>生成速度曲线</span>
+                  </button>
+                  <button id="backToDashboardBtn" class="ghost-button" type="button" data-go-view="dashboard">
+                    <img class="button-art" src="./assets/generated/buttons/refresh-records.png" alt="" />
+                    <span>返回大厅</span>
+                  </button>
+                </div>
+              </section>
+
+              <section class="panel simulation-scene-panel">
+                <div class="section-title">
+                  <div>
+                    <p class="eyebrow">速度输出</p>
+                    <h2>小球速度曲线</h2>
+                  </div>
+                </div>
+                <canvas id="simulationCanvas" width="900" height="560" aria-label="虚拟落球仿真画面"></canvas>
+                <div class="metric-grid compact simulation-metrics">
+                  <article class="metric primary">
+                    <span>终端速度 vt</span>
+                    <strong id="simVt">--</strong>
+                    <small>仿真输出速度</small>
+                  </article>
+                  <article class="metric">
+                    <span>已知液体 η</span>
+                    <strong id="simEta">--</strong>
+                    <small>仿真输入参数</small>
+                  </article>
+                  <article class="metric">
+                    <span>速度稳定性</span>
+                    <strong id="simScore">--</strong>
+                    <small>扰动、阻尼、采样综合</small>
+                  </article>
+                  <article class="metric">
+                    <span>状态标签</span>
+                    <strong id="simRisk">--</strong>
+                    <small>用于实验前训练</small>
+                  </article>
+                  <article class="metric">
+                    <span>Re</span>
+                    <strong id="simRe">--</strong>
+                    <small>二级修正判据</small>
+                  </article>
+                  <article class="metric">
+                    <span>K壁</span>
+                    <strong id="simWallCorrection">--</strong>
+                    <small>半径与深度修正</small>
+                  </article>
+                  <article class="metric">
+                    <span>KRe</span>
+                    <strong id="simReCorrection">--</strong>
+                    <small>1 + 3Re/16 - 19Re²/1080</small>
+                  </article>
+                  <article class="metric">
+                    <span>K总</span>
+                    <strong id="simCorrectionTotal">--</strong>
+                    <small>综合修正因子</small>
+                  </article>
+                </div>
+              </section>
+
+              <aside class="panel simulation-feedback-panel" aria-live="polite">
+                <div class="simulation-advice-head">
+                  <div class="simulation-advice-title">
+                    <p class="eyebrow">速度输出反馈</p>
+                    <h2>操作建议</h2>
+                  </div>
+                  <div class="simulation-run-module" aria-label="仿真运行模块">
+                    <span>仿真运行模块</span>
+                    <strong id="simFeedbackState">等待运行</strong>
+                    <small id="simFeedbackVt">vt --</small>
+                  </div>
+                </div>
+                <div class="simulation-advice-brief">
+                  <span>反馈依据</span>
+                  <p>运行后根据速度曲线、球筒径比、扰动强度与采样稳定性生成下一步建议。</p>
+                </div>
+                <div id="simulationRubric" class="simulation-advice-list">
+                  <article class="simulation-advice-row empty">
+                    <span class="advice-index">01</span>
+                    <div>
+                      <div class="advice-row-head">
+                        <strong>等待仿真运行</strong>
+                        <span class="advice-level">待生成</span>
+                      </div>
+                      <p>运行后会显示已知液体参数、小球速度输出和速度稳定性建议。</p>
+                    </div>
+                  </article>
+                </div>
+                <button id="sendSimulationToWorkbenchBtn" class="ghost-button full" type="button" disabled>
+                  <img class="button-art" src="./assets/generated/buttons/load-record.png" alt="" />
+                  <span>把仿真速度送入对照</span>
+                </button>
+              </aside>
+            </section>
+          </section>
+
+          <section class="app-view diagnosis-view" id="view-diagnosis" data-view="diagnosis" hidden>
+          <section class="diagnosis-layout">
+          <section class="record-section panel" id="records">
+            <div class="section-title">
+              <div>
+                <p class="eyebrow">证据留存</p>
+                <h2>真实轨迹分析记录</h2>
+              </div>
+              <div class="record-actions">
+                <button id="deleteSelectedRecordsBtn" class="ghost-button danger-button" type="button" disabled>
+                  <img class="button-art" src="./assets/generated/icons/diagnostic.png" alt="" />
+                  <span>删除所选</span>
+                </button>
+              </div>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th class="select-cell">
+                      <input id="selectAllRecords" class="record-select" type="checkbox" aria-label="全选实验记录" />
+                    </th>
+                    <th>ID</th>
+                    <th>时间</th>
+                    <th>样本</th>
+                    <th>vt</th>
+                    <th>η</th>
+                    <th>录像</th>
+                    <th>操作</th>
+                  </tr>
+                </thead>
+                <tbody id="recordsBody"></tbody>
+              </table>
+            </div>
+          </section>
+
+          <section class="assistant-section panel" id="assistant">
+            <div class="section-title">
+              <div>
+                <h2>误差来源与改进建议</h2>
+              </div>
+              <p>围绕落球法最容易被质疑的几个点：匀速段、Re 条件、壁效应、折射与释放质量。</p>
+            </div>
+            <div class="assistant-grid">
+              <div class="quick-list">
+                <button type="button" data-question="为什么需要识别匀速段？">
+                  <img src="./assets/generated/buttons/quick-uniform.png" alt="" />
+                  <span>匀速段识别依据</span>
+                </button>
+                <button type="button" data-question="折射补偿怎么做？">
+                  <img src="./assets/generated/buttons/quick-refraction.png" alt="" />
+                  <span>折射补偿思路</span>
+                </button>
+                <button type="button" data-question="Re条件和壁效应会怎样影响粘度结果？">
+                  <img src="./assets/generated/buttons/quick-boundary.png" alt="" />
+                  <span>Re与壁效应</span>
+                </button>
+                <button type="button" data-question="释放初速度和小球偏斜会带来什么误差？">
+                  <img src="./assets/generated/buttons/quick-computer.png" alt="" />
+                  <span>释放质量诊断</span>
+                </button>
+              </div>
+              <div class="chat-panel">
+                <div id="chatLog" class="chat-log"></div>
+                <form id="chatForm" class="chat-form">
+                  <input id="questionInput" type="text" placeholder="输入关于本次实验结果的问题" />
+                  <button class="primary-button" type="submit">
+                    <img class="button-art" src="./assets/generated/buttons/ask-assistant.png" alt="" />
+                    <span>提问</span>
+                  </button>
+                </form>
+              </div>
+            </div>
+          </section>
+          </section>
+
+          </section>
+
+          <section class="app-view validation-view" id="view-validation" data-view="validation" hidden>
+        <section class="system-config" id="roadmap">
+          <section class="panel status-panel">
+            <div class="section-title">
+              <div>
+                <p class="eyebrow">真实实验验证</p>
+                <h2>比赛作品验证清单</h2>
+              </div>
+              <p id="readinessPositioning">正在读取系统状态。</p>
+            </div>
+            <h3 id="readinessStage" class="config-status-title">加载中</h3>
+            <div class="config-grid" id="readinessCards"></div>
+            <div class="schema-panel">
+              <div>
+                <span>后端接口</span>
+                <strong>CSV轨迹分析已接入</strong>
+              </div>
+              <p>当前主流程为实时画面接入、标定棒点选、OpenCV 追踪和轨迹分析；CSV 与视频导入仅作为备用入口。</p>
+            </div>
+            <ol id="workflowList" class="workflow-list sr-flow"></ol>
+          </section>
+
+          <section class="readiness-detail-section panel">
+            <div class="section-title">
+              <div>
+                <p class="eyebrow">装置准备</p>
+                <h2>需要采集的真实数据</h2>
+              </div>
+              <p>用于后续把实时画面、标定棒点选、温度和轨迹数据接入分析服务。</p>
+            </div>
+            <div class="detail-grid">
+              <article>
+                <h3>接入设备</h3>
+                <ul id="deviceChecklist"></ul>
+              </article>
+              <article>
+                <h3>使用边界</h3>
+                <ul id="guardrailList"></ul>
+              </article>
+            </div>
+          </section>
+
+          <section class="video-route-section panel">
+            <div class="section-title">
+              <div>
+                <p class="eyebrow">视频分析接口</p>
+                <h2>后续接入路线</h2>
+              </div>
+              <p>先把视频变成可标定、可追踪、可导出的轨迹，再复用当前粘度计算链路。</p>
+            </div>
+            <div id="videoPipelineList" class="video-pipeline-list"></div>
+          </section>
+
+          <section class="roadmap-section panel">
+            <div class="section-title">
+              <div>
+                <p class="eyebrow">实施优先级</p>
+                <h2>先保主链路，再做反馈亮点</h2>
+              </div>
+            </div>
+            <p id="modulePositioning" class="module-positioning">系统定位加载中。</p>
+            <div class="roadmap-grid" id="moduleGrid"></div>
+          </section>
+        </section>
+          </section>
+        </div>
+      </main>
+    </div>
+
+    <div id="toast" class="toast"></div>
+    <script src="./app.js?v=auto-calibration-endpoint-v91"></script>
+  </body>
+</html>
