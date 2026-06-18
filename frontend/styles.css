@@ -1833,7 +1833,8 @@ body.calibration-fullscreen-active {
   background: rgba(15, 19, 17, 0.74);
 }
 
-.exit-calibration-fullscreen {
+.exit-calibration-fullscreen,
+.finish-calibration-button {
   position: absolute;
   z-index: 9;
   right: 18px;
@@ -1853,7 +1854,15 @@ body.calibration-fullscreen-active {
   cursor: pointer;
 }
 
-.exit-calibration-fullscreen[hidden] {
+.finish-calibration-button {
+  right: 116px;
+  color: #173a31;
+  background: rgba(255, 255, 255, 0.92);
+  border-color: rgba(230, 197, 127, 0.72);
+}
+
+.exit-calibration-fullscreen[hidden],
+.finish-calibration-button[hidden] {
   display: none;
 }
 
@@ -1884,6 +1893,11 @@ body.calibration-fullscreen-active {
   transform: translateY(-1px);
 }
 
+.finish-calibration-button:hover {
+  background: rgba(250, 246, 232, 0.96);
+  transform: translateY(-1px);
+}
+
 .live-preview-frame:fullscreen .live-zoom-toggle,
 .live-preview-frame.calibration-fullscreen-fallback .live-zoom-toggle {
   right: 18px;
@@ -1905,6 +1919,7 @@ body.calibration-fullscreen-active {
 
 .calibration-point {
   position: absolute;
+  pointer-events: auto;
   width: 10px;
   height: 10px;
   border-radius: 50%;
@@ -1914,6 +1929,22 @@ body.calibration-fullscreen-active {
     0 0 0 3px rgba(230, 197, 127, 0.14),
     0 5px 14px rgba(0, 0, 0, 0.32);
   transform: translate(-50%, -50%);
+  cursor: pointer;
+}
+
+.calibration-point:hover {
+  background: rgba(210, 82, 64, 0.95);
+  box-shadow:
+    0 0 0 5px rgba(210, 82, 64, 0.2),
+    0 5px 14px rgba(0, 0, 0, 0.32);
+}
+
+.calibration-point.is-missing {
+  background: transparent;
+  border-color: rgba(230, 197, 127, 0.72);
+  box-shadow:
+    0 0 0 3px rgba(230, 197, 127, 0.1),
+    inset 0 0 0 2px rgba(24, 29, 26, 0.38);
 }
 
 .calibration-point::after {
@@ -2183,6 +2214,7 @@ body.calibration-fullscreen-active {
   grid-template-columns: 24px minmax(0, 1fr);
   min-width: 0;
   width: 100%;
+  height: 48px;
   min-height: 48px;
   padding: 8px 10px;
   gap: 8px;

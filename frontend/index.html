@@ -401,7 +401,7 @@
                       <small>支持浏览器摄像头、手机投屏采集卡或 RTSP/NDI 转 WebRTC 服务接入</small>
                     </div>
                     <button id="calibrationClickLayer" class="calibration-click-layer" type="button" aria-label="按顺序点击标定棒刻度点" disabled>
-                      <span id="calibrationPointsLayer" class="calibration-points-layer" aria-hidden="true"></span>
+                      <span id="calibrationPointsLayer" class="calibration-points-layer"></span>
                       <span id="calibrationSegment" class="calibration-segment" hidden></span>
                     </button>
                     <div id="roiSelectionLayer" class="roi-selection-layer" hidden>
@@ -412,6 +412,9 @@
                     </button>
                     <button id="exitCalibrationFullscreenBtn" class="exit-calibration-fullscreen" type="button" hidden>
                       <span>退出放大</span>
+                    </button>
+                    <button id="finishCalibrationBtn" class="finish-calibration-button" type="button" hidden>
+                      <span>完成标定</span>
                     </button>
                   </div>
                   <div class="live-control-panel">
@@ -498,9 +501,11 @@
                       <div class="live-action-group">
                         <span class="live-action-title">检测区域</span>
                         <button id="startRoiSelectBtn" class="ghost-button" type="button" disabled>
-                          <span>🔲 框选检测区域</span>
+                          <img class="button-art" src="./assets/generated/buttons/quick-boundary.png" alt="" />
+                          <span>框选检测区域</span>
                         </button>
                         <button id="clearRoiBtn" class="ghost-button" type="button" disabled>
+                          <img class="button-art" src="./assets/generated/buttons/reset-params.png" alt="" />
                           <span>清除选区</span>
                         </button>
                       </div>

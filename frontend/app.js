@@ -46,6 +46,7 @@ const state = {
   calibrationMode: false,
   calibrationVisualsHidden: false,
   calibrationPoints: [],
+  calibrationEditIndex: null,
   axisCalibrationPoints: [],
   correctionMode: "piecewise",
   manualScaleMPerPx: null,
@@ -135,6 +136,7 @@ const el = {
   calibrationPointsLayer: document.getElementById("calibrationPointsLayer"),
   calibrationSegment: document.getElementById("calibrationSegment"),
   exitCalibrationFullscreenBtn: document.getElementById("exitCalibrationFullscreenBtn"),
+  finishCalibrationBtn: document.getElementById("finishCalibrationBtn"),
   toggleLiveZoomBtn: document.getElementById("toggleLiveZoomBtn"),
   calibrationPointStatus: document.getElementById("calibrationPointStatus"),
   calibrationPixelDistance: document.getElementById("calibrationPixelDistance"),
@@ -1118,9 +1120,17 @@ function updateLiveCalibrationStatus() {
   const targetCount = getCalibrationTargetCount();
   const paramsValid = rodLength >= 50 && rodDiameter > 0 && tickSpacing > 0 && targetCount >= 3;
   const pointsReady = state.axisCalibrationPoints.length >= 2 && Number.isFinite(state.manualScaleMPerPx);
+  const selectedReady = state.calibrationMode && calibrationPointsReady();
   if (!paramsValid) {
     el.liveCalibrationStatus.textContent = "参数需补齐";
     if (el.liveReadinessDetail) el.liveReadinessDetail.textContent = "请补齐标定棒直径、长度、刻度间距和点击点数。";
+    return;
+  }
+  if (selectedReady) {
+    el.liveCalibrationStatus.textContent = "等待确认标定";
+    if (el.liveReadinessDetail) {
+      el.liveReadinessDetail.textContent = "标定点已点齐。若有点位错误，可以直接点击该点删除并重新点选；确认无误后点击完成标定。";
+    }
     return;
   }
   if (pointsReady) {
@@ -1144,11 +1154,13 @@ function startManualCalibration() {
   state.calibrationMode = true;
   state.calibrationVisualsHidden = false;
   state.calibrationPoints = [];
+  state.calibrationEditIndex = null;
   state.axisCalibrationPoints = [];
   state.manualScaleMPerPx = null;
   el.calibrationClickLayer.disabled = false;
   el.calibrationClickLayer.classList.add("is-calibrating");
   el.calibrationClickLayer.dataset.hint = calibrationClickHint(0);
+  if (el.finishCalibrationBtn) el.finishCalibrationBtn.hidden = true;
   el.realtimeImportPanel?.classList.add("calibration-focus");
   enterLiveFullscreen("calibration");
   renderCalibrationPoints();
@@ -1166,6 +1178,7 @@ function resetManualCalibrationState() {
   state.calibrationMode = false;
   state.calibrationVisualsHidden = false;
   state.calibrationPoints = [];
+  state.calibrationEditIndex = null;
   state.axisCalibrationPoints = [];
   state.manualScaleMPerPx = null;
   if (el.calibrationClickLayer) {
@@ -1173,6 +1186,7 @@ function resetManualCalibrationState() {
     el.calibrationClickLayer.classList.remove("is-calibrating");
     delete el.calibrationClickLayer.dataset.hint;
   }
+  if (el.finishCalibrationBtn) el.finishCalibrationBtn.hidden = true;
   exitCalibrationFullscreen();
   renderCalibrationPoints();
   updateLiveCalibrationStatus();
@@ -1181,6 +1195,15 @@ function resetManualCalibrationState() {
 
 function handleCalibrationClick(event) {
   if (!state.calibrationMode || !el.calibrationClickLayer) return;
+  const clickedPoint = event.target.closest?.(".calibration-point");
+  if (clickedPoint && el.calibrationClickLayer.contains(clickedPoint)) {
+    deleteCalibrationPoint(Number(clickedPoint.dataset.index));
+    return;
+  }
+  if (calibrationPointsReady()) {
+    showToast("标定点已点齐。点错的标定点可先删除，确认无误后点击“完成标定”。");
+    return;
+  }
   const rect = el.calibrationClickLayer.getBoundingClientRect();
   const mediaPoint = calibrationMediaPoint(event, rect);
   const displayPoint = mediaNormToLayerPoint(mediaPoint.xNorm, mediaPoint.yNorm, rect);
@@ -1190,17 +1213,51 @@ function handleCalibrationClick(event) {
     xNorm: mediaPoint.xNorm,
     yNorm: mediaPoint.yNorm,
   };
-  state.calibrationPoints.push(point);
   const targetCount = getCalibrationTargetCount();
-  if (state.calibrationPoints.length >= targetCount) {
-    finishManualCalibration();
+  const missingIndex = firstMissingCalibrationIndex();
+  const targetIndex = Number.isInteger(state.calibrationEditIndex) ? state.calibrationEditIndex : missingIndex;
+  const writeIndex = targetIndex >= 0 ? targetIndex : Math.min(state.calibrationPoints.length, targetCount - 1);
+  state.calibrationPoints[writeIndex] = point;
+  state.calibrationEditIndex = null;
+  if (calibrationPointsReady()) {
+    el.calibrationClickLayer.dataset.hint = "标定点已齐 · 点错可点击删除 · 确认后点完成标定";
+    if (el.finishCalibrationBtn) el.finishCalibrationBtn.hidden = false;
   } else if (el.calibrationClickLayer) {
-    el.calibrationClickLayer.dataset.hint = calibrationClickHint(state.calibrationPoints.length);
+    el.calibrationClickLayer.dataset.hint = calibrationClickHint(firstMissingCalibrationIndex());
   }
   renderCalibrationPoints();
+  updateLiveCalibrationStatus();
+}
+
+function deleteCalibrationPoint(index) {
+  const targetCount = getCalibrationTargetCount();
+  if (!Number.isInteger(index) || index < 0 || index >= targetCount || !state.calibrationPoints[index]) return;
+  state.calibrationPoints[index] = null;
+  state.calibrationEditIndex = index;
+  state.axisCalibrationPoints = [];
+  state.manualScaleMPerPx = null;
+  state.calibrationMode = true;
+  if (el.calibrationClickLayer) {
+    el.calibrationClickLayer.disabled = false;
+    el.calibrationClickLayer.classList.add("is-calibrating");
+    el.calibrationClickLayer.dataset.hint = calibrationClickHint(index).replace("点击", "重新点击");
+  }
+  if (el.finishCalibrationBtn) el.finishCalibrationBtn.hidden = true;
+  renderCalibrationPoints();
+  updateLiveCalibrationStatus();
+  updateNonlinearCorrectionStatus();
+  showToast(`已删除 ${Math.round(calibrationDistanceMmAt(index) || 0)} mm 标定点，请重新点这个刻度。`);
 }
 
 function finishManualCalibration() {
+  if (!calibrationPointsReady()) {
+    const nextIndex = firstMissingCalibrationIndex();
+    if (el.calibrationClickLayer && nextIndex >= 0) {
+      el.calibrationClickLayer.dataset.hint = calibrationClickHint(nextIndex);
+    }
+    showToast("还有标定点未补齐，请先点完缺失刻度。");
+    return;
+  }
   const distancePx = calibrationPixelDistance();
   const rodSpanM = calibrationMappedSpanMeters();
   if (!distancePx || !Number.isFinite(rodSpanM) || rodSpanM <= 0) {
@@ -1212,12 +1269,14 @@ function finishManualCalibration() {
   state.manualScaleMPerPx = rodSpanM / distancePx;
   state.calibrationMode = false;
   state.calibrationVisualsHidden = false;
+  state.calibrationEditIndex = null;
   exitCalibrationFullscreen();
   if (el.calibrationClickLayer) {
     el.calibrationClickLayer.disabled = true;
     el.calibrationClickLayer.classList.remove("is-calibrating");
     delete el.calibrationClickLayer.dataset.hint;
   }
+  if (el.finishCalibrationBtn) el.finishCalibrationBtn.hidden = true;
   renderCalibrationPoints();
   updateLiveCalibrationStatus();
   updateNonlinearCorrectionStatus();
@@ -1270,9 +1329,8 @@ function enterCalibrationFullscreen() {
   return enterLiveFullscreen("calibration");
 }
 
-function exitCalibrationFullscreen(options = {}) {
-  const preserveFocus = options.preserveFocus ?? state.calibrationMode;
-  if (!preserveFocus) el.realtimeImportPanel?.classList.remove("calibration-focus");
+function exitCalibrationFullscreen() {
+  el.realtimeImportPanel?.classList.remove("calibration-focus");
   const frame = livePreviewFrame();
   const shouldExitNative = document.fullscreenElement === frame && document.exitFullscreen;
   frame?.classList.remove("calibration-fullscreen-fallback");
@@ -1285,7 +1343,16 @@ function exitCalibrationFullscreen(options = {}) {
     document.exitFullscreen().catch(() => {});
   }
   updateLiveZoomControls(false);
-  window.requestAnimationFrame(refreshLiveOverlayGeometry);
+  window.requestAnimationFrame(() => {
+    refreshLiveOverlayGeometry();
+    renderCalibrationPoints();
+    renderCylinderEdgeMarks();
+  });
+  window.setTimeout(() => {
+    refreshLiveOverlayGeometry();
+    renderCalibrationPoints();
+    renderCylinderEdgeMarks();
+  }, 80);
 }
 
 function handleFullscreenChange() {
@@ -1295,14 +1362,23 @@ function handleFullscreenChange() {
     frame?.classList.remove("is-live-zoomed");
     if (frame?.dataset) delete frame.dataset.zoomMode;
     document.body.classList.remove("calibration-fullscreen-active");
-    if (!state.calibrationMode) el.realtimeImportPanel?.classList.remove("calibration-focus");
+    el.realtimeImportPanel?.classList.remove("calibration-focus");
     state.liveZoomMode = null;
     state.cylinderEdgeZoomStarted = false;
     updateLiveZoomControls(false);
   } else {
     updateLiveZoomControls();
   }
-  refreshLiveOverlayGeometry();
+  window.requestAnimationFrame(() => {
+    refreshLiveOverlayGeometry();
+    renderCalibrationPoints();
+    renderCylinderEdgeMarks();
+  });
+  window.setTimeout(() => {
+    refreshLiveOverlayGeometry();
+    renderCalibrationPoints();
+    renderCylinderEdgeMarks();
+  }, 80);
 }
 
 function toggleLiveZoom() {
@@ -1314,10 +1390,10 @@ function toggleLiveZoom() {
 }
 
 function calibrationPixelDistance() {
-  if (state.calibrationPoints.length < 2 || !el.calibrationClickLayer) return null;
+  if (!calibrationPointsReady() || !el.calibrationClickLayer) return null;
   const rect = el.calibrationClickLayer.getBoundingClientRect();
   const a = state.calibrationPoints[0];
-  const b = state.calibrationPoints[state.calibrationPoints.length - 1];
+  const b = state.calibrationPoints[getCalibrationTargetCount() - 1];
   const video = calibrationVideoElement();
   if (
     video?.videoWidth &&
@@ -1414,6 +1490,20 @@ function calibrationPointDisplay(point, layerRect) {
   };
 }
 
+function calibrationPointsReady() {
+  const targetCount = getCalibrationTargetCount();
+  if (state.calibrationPoints.length < targetCount) return false;
+  return state.calibrationPoints.slice(0, targetCount).every(Boolean);
+}
+
+function firstMissingCalibrationIndex() {
+  const targetCount = getCalibrationTargetCount();
+  for (let index = 0; index < targetCount; index += 1) {
+    if (!state.calibrationPoints[index]) return index;
+  }
+  return -1;
+}
+
 function renderCalibrationPoints() {
   const points = state.calibrationPoints;
   const hideVisuals = state.calibrationVisualsHidden && !state.calibrationMode;
@@ -1421,18 +1511,20 @@ function renderCalibrationPoints() {
   if (el.calibrationPointsLayer) {
     el.calibrationPointsLayer.innerHTML = hideVisuals ? "" : points
       .map((point, index) => {
+        if (!point) return "";
         const labelMm = calibrationDistanceMmAt(index);
         const label = Number.isFinite(labelMm) ? `${Math.round(labelMm)}mm` : `${index + 1}`;
         const display = calibrationPointDisplay(point, rect);
-        return `<span class="calibration-point" style="left:${display.xPct}%;top:${display.yPct}%;" data-label="${label}"></span>`;
+        return `<span class="calibration-point" style="left:${display.xPct}%;top:${display.yPct}%;" data-index="${index}" data-label="${label}" title="删除并重新标定 ${label}" aria-label="删除并重新标定 ${label}"></span>`;
       })
       .join("");
   }
   if (el.calibrationSegment) {
-    if (!hideVisuals && points.length >= 2 && el.calibrationClickLayer) {
+    const visiblePoints = points.filter(Boolean);
+    if (!hideVisuals && visiblePoints.length >= 2 && el.calibrationClickLayer) {
       const layerRect = rect || el.calibrationClickLayer.getBoundingClientRect();
-      const a = points[0];
-      const b = points[points.length - 1];
+      const a = visiblePoints[0];
+      const b = visiblePoints[visiblePoints.length - 1];
       const aDisplay = calibrationPointDisplay(a, layerRect);
       const bDisplay = calibrationPointDisplay(b, layerRect);
       const ax = (aDisplay.xPct / 100) * layerRect.width;
@@ -1450,8 +1542,9 @@ function renderCalibrationPoints() {
   }
   const distancePx = calibrationPixelDistance();
   const targetCount = getCalibrationTargetCount();
+  const selectedCount = points.slice(0, targetCount).filter(Boolean).length;
   if (el.calibrationPointStatus) {
-    el.calibrationPointStatus.textContent = points.length ? `${Math.min(points.length, targetCount)}/${targetCount}` : "未选择";
+    el.calibrationPointStatus.textContent = selectedCount ? `${selectedCount}/${targetCount}` : "未选择";
   }
   if (el.calibrationPixelDistance) {
     el.calibrationPixelDistance.textContent = distancePx ? `${distancePx.toFixed(1)} px` : "--";
@@ -1482,13 +1575,13 @@ function calibrationDistanceMmAt(index) {
 
 function calibrationMappedSpanMeters() {
   const points = state.calibrationPoints;
-  if (points.length < 2) return null;
-  const spanM = (calibrationDistanceMmAt(points.length - 1) || 0) / 1000;
+  if (!calibrationPointsReady()) return null;
+  const spanM = (calibrationDistanceMmAt(getCalibrationTargetCount() - 1) || 0) / 1000;
   return Number.isFinite(spanM) && spanM > 0 ? spanM : null;
 }
 
 function buildAxisCalibrationPoints() {
-  return state.calibrationPoints.map((point, index) => ({
+  return state.calibrationPoints.slice(0, getCalibrationTargetCount()).map((point, index) => ({
     y_norm: Number((Number.isFinite(point.yNorm) ? point.yNorm : point.y).toFixed(8)),
     real_m: Number(((calibrationDistanceMmAt(index) || 0) / 1000).toFixed(8)),
   }));
@@ -1496,8 +1589,9 @@ function buildAxisCalibrationPoints() {
 
 function calibrationClickHint(index) {
   const targetCount = getCalibrationTargetCount();
-  const nextMm = Math.round(calibrationDistanceMmAt(index) || 0);
-  return `点击 ${nextMm} mm 刻度 · ${index + 1}/${targetCount}`;
+  const safeIndex = clamp(index, 0, targetCount - 1);
+  const nextMm = Math.round(calibrationDistanceMmAt(safeIndex) || 0);
+  return `点击 ${nextMm} mm 刻度 · ${safeIndex + 1}/${targetCount}`;
 }
 
 function calibrationVideoElement() {
@@ -4055,6 +4149,7 @@ function bind() {
   el.stopLiveCameraBtn?.addEventListener("click", () => stopLiveCamera());
   el.startCalibrationBtn?.addEventListener("click", startManualCalibration);
   el.resetCalibrationBtn?.addEventListener("click", resetManualCalibration);
+  el.finishCalibrationBtn?.addEventListener("click", finishManualCalibration);
   el.exitCalibrationFullscreenBtn?.addEventListener("click", exitCalibrationFullscreen);
   el.toggleLiveZoomBtn?.addEventListener("click", toggleLiveZoom);
   document.addEventListener("fullscreenchange", handleFullscreenChange);

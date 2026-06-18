@@ -130,12 +130,14 @@ def correction_factors(
     safe_viscosity = max(viscosity, 1e-9)
     re = rho_liquid * terminal_velocity * 2 * radius_m / safe_viscosity
     wall_correction = (1 + 2.4 * radius_m / safe_tube_radius) * (1 + 3.3 * radius_m / safe_depth)
-    reynolds_correction = max(0.15, 1 + 3 * re / 16 - 19 * re * re / 1080)
+    reynolds_in_range = re <= 1.0
+    reynolds_correction = max(1.0, 1 + 3 * re / 16 - 19 * re * re / 1080) if reynolds_in_range else 1.0
     return {
         "re": re,
         "wall_correction": wall_correction,
         "reynolds_correction": reynolds_correction,
         "correction_total": wall_correction * reynolds_correction,
+        "reynolds_correction_applied": reynolds_in_range,
     }
 
 
@@ -144,12 +146,31 @@ def viscosity_from_terminal_velocity(params: MeasurementParams, terminal_velocit
     tube_radius_m = params.tube_diameter_mm / 2000
     liquid_depth_m = params.liquid_depth_mm / 1000
     base = 2 * radius_m * radius_m * (params.rho_ball - params.rho_liquid) * G / (9 * max(terminal_velocity, 1e-9))
-    viscosity = max(base, 1e-9)
+    wall_factors = correction_factors(radius_m, tube_radius_m, liquid_depth_m, params.rho_liquid, terminal_velocity, base)
+    viscosity = max(base / wall_factors["wall_correction"], 1e-9)
     factors = correction_factors(radius_m, tube_radius_m, liquid_depth_m, params.rho_liquid, terminal_velocity, viscosity)
+    if not factors["reynolds_correction_applied"]:
+        return {"viscosity": viscosity, "ideal_viscosity": base, **factors}
     for _ in range(iterations):
         factors = correction_factors(radius_m, tube_radius_m, liquid_depth_m, params.rho_liquid, terminal_velocity, viscosity)
-        viscosity = max(base / factors["correction_total"], 1e-9)
+        if not factors["reynolds_correction_applied"]:
+            factors["reynolds_correction"] = 1.0
+            factors["correction_total"] = factors["wall_correction"]
+            viscosity = max(base / factors["wall_correction"], 1e-9)
+            break
+        next_viscosity = max(base / factors["correction_total"], 1e-9)
+        if abs(next_viscosity - viscosity) / max(viscosity, 1e-9) < 1e-6:
+            viscosity = next_viscosity
+            break
+        viscosity = 0.55 * viscosity + 0.45 * next_viscosity
     factors = correction_factors(radius_m, tube_radius_m, liquid_depth_m, params.rho_liquid, terminal_velocity, viscosity)
+    if not factors["reynolds_correction_applied"]:
+        factors["reynolds_correction"] = 1.0
+        factors["correction_total"] = factors["wall_correction"]
+        viscosity = max(base / factors["wall_correction"], 1e-9)
+        factors = correction_factors(radius_m, tube_radius_m, liquid_depth_m, params.rho_liquid, terminal_velocity, viscosity)
+        factors["reynolds_correction"] = 1.0
+        factors["correction_total"] = factors["wall_correction"]
     return {"viscosity": viscosity, "ideal_viscosity": base, **factors}
 
 
@@ -665,6 +686,7 @@ def analyze_frames(params: MeasurementParams, frames: list[dict], student: dict 
             "re": re,
             "wall_correction": corrected["wall_correction"],
             "reynolds_correction": corrected["reynolds_correction"],
+            "reynolds_correction_applied": corrected["reynolds_correction_applied"],
             "correction_total": corrected["correction_total"],
             "relative_uncertainty": relative_uncertainty,
             "tracking_confidence": avg_confidence,
