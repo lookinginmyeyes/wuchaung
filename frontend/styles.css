@@ -2329,13 +2329,6 @@ body.calibration-fullscreen-active {
   border-color: rgba(166, 66, 66, 0.38);
 }
 
-.live-actions #syncIvcamZoomBtn.is-syncing {
-  color: #173a31;
-  border-color: rgba(230, 197, 127, 0.72);
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(249, 239, 211, 0.96));
-  box-shadow: 0 14px 32px -28px rgba(148, 110, 38, 0.8);
-}
-
 .live-actions .button-art {
   width: 24px;
   height: 24px;

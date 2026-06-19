@@ -48,9 +48,6 @@ const state = {
   calibrationVisualsHidden: false,
   calibrationPoints: [],
   calibrationEditIndex: null,
-  ivcamSyncMode: false,
-  ivcamSyncClicks: [],
-  ivcamSyncWasCalibrationMode: false,
   axisCalibrationPoints: [],
   correctionMode: "piecewise",
   manualScaleMPerPx: null,
@@ -139,7 +136,6 @@ const el = {
   stopLiveCameraBtn: document.getElementById("stopLiveCameraBtn"),
   startCalibrationBtn: document.getElementById("startCalibrationBtn"),
   resetCalibrationBtn: document.getElementById("resetCalibrationBtn"),
-  syncIvcamZoomBtn: document.getElementById("syncIvcamZoomBtn"),
   calibrationClickLayer: document.getElementById("calibrationClickLayer"),
   calibrationPointsLayer: document.getElementById("calibrationPointsLayer"),
   calibrationSegment: document.getElementById("calibrationSegment"),
@@ -1188,9 +1184,6 @@ function resetManualCalibration() {
 
 function resetManualCalibrationState() {
   state.calibrationMode = false;
-  state.ivcamSyncMode = false;
-  state.ivcamSyncClicks = [];
-  state.ivcamSyncWasCalibrationMode = false;
   state.calibrationVisualsHidden = false;
   state.calibrationPoints = [];
   state.calibrationEditIndex = null;
@@ -1210,10 +1203,6 @@ function resetManualCalibrationState() {
 }
 
 function handleCalibrationClick(event) {
-  if (state.ivcamSyncMode) {
-    handleIvcamZoomSyncClick(event);
-    return;
-  }
   if (!state.calibrationMode || !el.calibrationClickLayer) return;
   const clickedPoint = event.target.closest?.(".calibration-point");
   if (clickedPoint && el.calibrationClickLayer.contains(clickedPoint)) {
@@ -1267,135 +1256,6 @@ function deleteCalibrationPoint(index) {
   updateLiveCalibrationStatus();
   updateNonlinearCorrectionStatus();
   showToast(`已删除 ${Math.round(calibrationDistanceMmAt(index) || 0)} mm 标定点，请重新点这个刻度。`);
-}
-
-function startIvcamZoomSync() {
-  const targetCount = getCalibrationTargetCount();
-  const first = state.calibrationPoints[0];
-  const last = state.calibrationPoints[targetCount - 1];
-  if (!first || !last || !Number.isFinite(first.xNorm) || !Number.isFinite(first.yNorm) || !Number.isFinite(last.xNorm) || !Number.isFinite(last.yNorm)) {
-    showToast("需要先完成标定点，才能同步 iVcam 缩放。");
-    return;
-  }
-  if (state.ivcamSyncMode) {
-    finishIvcamZoomSync(false);
-    showToast("已取消 iVcam 缩放同步。");
-    return;
-  }
-  resetManualVideoZoom();
-  state.ivcamSyncMode = true;
-  state.ivcamSyncClicks = [];
-  state.ivcamSyncWasCalibrationMode = state.calibrationMode;
-  if (el.calibrationClickLayer) {
-    el.calibrationClickLayer.disabled = false;
-    el.calibrationClickLayer.classList.add("is-calibrating");
-    el.calibrationClickLayer.dataset.hint = "同步 iVcam 缩放：点击原来的第 1 个标定点";
-  }
-  el.realtimeImportPanel?.classList.add("calibration-focus");
-  enterLiveFullscreen("ivcam-sync");
-  updateIvcamSyncButton();
-  showToast("请依次点击画面中原来的第 1 个标定点和最后 1 个标定点。");
-}
-
-function handleIvcamZoomSyncClick(event) {
-  if (!state.ivcamSyncMode || !el.calibrationClickLayer) return;
-  event.preventDefault();
-  const rect = el.calibrationClickLayer.getBoundingClientRect();
-  const mediaPoint = calibrationMediaPoint(event, rect);
-  state.ivcamSyncClicks.push({
-    xNorm: mediaPoint.xNorm,
-    yNorm: mediaPoint.yNorm,
-  });
-  if (state.ivcamSyncClicks.length === 1) {
-    el.calibrationClickLayer.dataset.hint = "同步 iVcam 缩放：点击原来的最后 1 个标定点";
-    showToast("第 1 个参考点已记录，请点击最后 1 个标定点。");
-    return;
-  }
-  applyIvcamZoomSync();
-}
-
-function transformCalibrationPointByAnchors(point, oldStart, oldEnd, newStart, newEnd) {
-  const ax = oldEnd.xNorm - oldStart.xNorm;
-  const ay = oldEnd.yNorm - oldStart.yNorm;
-  const bx = newEnd.xNorm - newStart.xNorm;
-  const by = newEnd.yNorm - newStart.yNorm;
-  const denom = ax * ax + ay * ay;
-  if (!denom || !Number.isFinite(denom)) return null;
-  const m11 = (bx * ax + by * ay) / denom;
-  const m12 = (by * ax - bx * ay) / denom;
-  const relX = point.xNorm - oldStart.xNorm;
-  const relY = point.yNorm - oldStart.yNorm;
-  return {
-    xNorm: clamp(newStart.xNorm + m11 * relX - m12 * relY, 0, 1),
-    yNorm: clamp(newStart.yNorm + m12 * relX + m11 * relY, 0, 1),
-  };
-}
-
-function applyIvcamZoomSync() {
-  const targetCount = getCalibrationTargetCount();
-  const oldStart = state.calibrationPoints[0];
-  const oldEnd = state.calibrationPoints[targetCount - 1];
-  const [newStart, newEnd] = state.ivcamSyncClicks;
-  if (!oldStart || !oldEnd || !newStart || !newEnd) {
-    finishIvcamZoomSync(false);
-    showToast("同步参考点不足，请重新操作。");
-    return;
-  }
-  const rect = el.calibrationClickLayer?.getBoundingClientRect();
-  state.calibrationPoints = state.calibrationPoints.map((point) => {
-    if (!point || !Number.isFinite(point.xNorm) || !Number.isFinite(point.yNorm)) return point;
-    const mapped = transformCalibrationPointByAnchors(point, oldStart, oldEnd, newStart, newEnd);
-    if (!mapped) return point;
-    const displayPoint = rect ? mediaNormToLayerPoint(mapped.xNorm, mapped.yNorm, rect) : null;
-    return {
-      ...point,
-      xNorm: mapped.xNorm,
-      yNorm: mapped.yNorm,
-      x: displayPoint ? displayPoint.xPct / 100 : mapped.xNorm,
-      y: displayPoint ? displayPoint.yPct / 100 : mapped.yNorm,
-    };
-  });
-  if (calibrationPointsReady()) {
-    const distancePx = calibrationPixelDistance();
-    const rodSpanM = calibrationMappedSpanMeters();
-    state.axisCalibrationPoints = buildAxisCalibrationPoints();
-    state.manualScaleMPerPx = distancePx && rodSpanM ? rodSpanM / distancePx : state.manualScaleMPerPx;
-  }
-  finishIvcamZoomSync(true);
-  renderCalibrationPoints();
-  updateLiveCalibrationStatus();
-  updateNonlinearCorrectionStatus();
-  showToast("已根据 iVcam 缩放后的画面同步标定点位置。");
-}
-
-function finishIvcamZoomSync(keepFullscreen = true) {
-  state.ivcamSyncMode = false;
-  state.ivcamSyncClicks = [];
-  if (el.calibrationClickLayer) {
-    if (state.ivcamSyncWasCalibrationMode) {
-      el.calibrationClickLayer.disabled = false;
-      el.calibrationClickLayer.classList.add("is-calibrating");
-      el.calibrationClickLayer.dataset.hint = calibrationPointsReady()
-        ? "标定点已齐 · 点错可点击删除 · 确认后点完成标定"
-        : calibrationClickHint(firstMissingCalibrationIndex());
-    } else {
-      el.calibrationClickLayer.disabled = true;
-      el.calibrationClickLayer.classList.remove("is-calibrating");
-      delete el.calibrationClickLayer.dataset.hint;
-    }
-  }
-  state.ivcamSyncWasCalibrationMode = false;
-  updateIvcamSyncButton();
-  if (!keepFullscreen) exitCalibrationFullscreen();
-}
-
-function updateIvcamSyncButton() {
-  if (!el.syncIvcamZoomBtn) return;
-  const ready = calibrationPointsReady();
-  el.syncIvcamZoomBtn.disabled = !ready;
-  el.syncIvcamZoomBtn.classList.toggle("is-syncing", state.ivcamSyncMode);
-  const label = el.syncIvcamZoomBtn.querySelector("span");
-  if (label) label.textContent = state.ivcamSyncMode ? "取消同步" : "同步iVcam缩放";
 }
 
 function finishManualCalibration() {
@@ -1802,7 +1662,6 @@ function renderCalibrationPoints() {
   if (el.calibrationScale) {
     el.calibrationScale.textContent = state.manualScaleMPerPx ? formatMetersPerPixel(state.manualScaleMPerPx) : "--";
   }
-  updateIvcamSyncButton();
 }
 
 function getCalibrationTargetCount() {
@@ -4465,7 +4324,6 @@ function bind() {
   el.stopLiveCameraBtn?.addEventListener("click", () => stopLiveCamera());
   el.startCalibrationBtn?.addEventListener("click", startManualCalibration);
   el.resetCalibrationBtn?.addEventListener("click", resetManualCalibration);
-  el.syncIvcamZoomBtn?.addEventListener("click", startIvcamZoomSync);
   el.finishCalibrationBtn?.addEventListener("click", finishManualCalibration);
   el.exitCalibrationFullscreenBtn?.addEventListener("click", exitCalibrationFullscreen);
   el.toggleLiveZoomBtn?.addEventListener("click", toggleLiveZoom);
