@@ -38,8 +38,9 @@ const state = {
   liveOffsetTerminated: false,
   lastFallOffset: null,
   roiSelecting: false,
-  roiRect: null,       // { xPct, yPct, wPct, hPct } in % of video
+  roiRect: null,       // { xPct, yPct, wPct, hPct } in % of video content
   roiDragStart: null,
+  roiZoomStarted: false,
   cylinderEdgeMarking: false,
   cylinderEdgeZoomStarted: false,
   cylinderEdgePoints: [],
@@ -51,6 +52,9 @@ const state = {
   correctionMode: "piecewise",
   manualScaleMPerPx: null,
   liveZoomMode: null,
+  manualZoomActive: false,
+  manualZoomScale: 1,
+  manualZoomOrigin: { x: 50, y: 50 },
   accessGranted: false,
   examStarted: false,
   lectureStarted: false,
@@ -149,6 +153,10 @@ const el = {
   ballOffsetMarker: document.getElementById("ballOffsetMarker"),
   roiSelectionLayer: document.getElementById("roiSelectionLayer"),
   roiBox: document.getElementById("roiBox"),
+  liveZoomTargetLayer: document.getElementById("liveZoomTargetLayer"),
+  liveManualZoomControls: document.getElementById("liveManualZoomControls"),
+  toggleLiveMagnifyBtn: document.getElementById("toggleLiveMagnifyBtn"),
+  resetLiveMagnifyBtn: document.getElementById("resetLiveMagnifyBtn"),
   startRoiSelectBtn: document.getElementById("startRoiSelectBtn"),
   clearRoiBtn: document.getElementById("clearRoiBtn"),
   cylinderEdgeClickLayer: document.getElementById("cylinderEdgeClickLayer"),
@@ -1187,6 +1195,7 @@ function resetManualCalibrationState() {
     delete el.calibrationClickLayer.dataset.hint;
   }
   if (el.finishCalibrationBtn) el.finishCalibrationBtn.hidden = true;
+  hideLiveMagnifier();
   exitCalibrationFullscreen();
   renderCalibrationPoints();
   updateLiveCalibrationStatus();
@@ -1270,6 +1279,7 @@ function finishManualCalibration() {
   state.calibrationMode = false;
   state.calibrationVisualsHidden = false;
   state.calibrationEditIndex = null;
+  hideLiveMagnifier();
   exitCalibrationFullscreen();
   if (el.calibrationClickLayer) {
     el.calibrationClickLayer.disabled = true;
@@ -1304,6 +1314,13 @@ function updateLiveZoomControls(activeOverride = null) {
   if (el.exitCalibrationFullscreenBtn) {
     el.exitCalibrationFullscreenBtn.hidden = !active;
   }
+  if (el.liveManualZoomControls) {
+    el.liveManualZoomControls.hidden = !active;
+  }
+  if (!active) {
+    setManualZoomTargeting(false);
+  }
+  updateManualZoomControls();
 }
 
 async function enterLiveFullscreen(mode = "zoom") {
@@ -1330,6 +1347,8 @@ function enterCalibrationFullscreen() {
 }
 
 function exitCalibrationFullscreen() {
+  hideLiveMagnifier();
+  resetManualVideoZoom();
   el.realtimeImportPanel?.classList.remove("calibration-focus");
   const frame = livePreviewFrame();
   const shouldExitNative = document.fullscreenElement === frame && document.exitFullscreen;
@@ -1339,6 +1358,7 @@ function exitCalibrationFullscreen() {
   document.body.classList.remove("calibration-fullscreen-active");
   state.liveZoomMode = null;
   state.cylinderEdgeZoomStarted = false;
+  state.roiZoomStarted = false;
   if (shouldExitNative) {
     document.exitFullscreen().catch(() => {});
   }
@@ -1347,11 +1367,13 @@ function exitCalibrationFullscreen() {
     refreshLiveOverlayGeometry();
     renderCalibrationPoints();
     renderCylinderEdgeMarks();
+    renderRoiPersistent();
   });
   window.setTimeout(() => {
     refreshLiveOverlayGeometry();
     renderCalibrationPoints();
     renderCylinderEdgeMarks();
+    renderRoiPersistent();
   }, 80);
 }
 
@@ -1365,6 +1387,9 @@ function handleFullscreenChange() {
     el.realtimeImportPanel?.classList.remove("calibration-focus");
     state.liveZoomMode = null;
     state.cylinderEdgeZoomStarted = false;
+    state.roiZoomStarted = false;
+    hideLiveMagnifier();
+    resetManualVideoZoom();
     updateLiveZoomControls(false);
   } else {
     updateLiveZoomControls();
@@ -1373,11 +1398,13 @@ function handleFullscreenChange() {
     refreshLiveOverlayGeometry();
     renderCalibrationPoints();
     renderCylinderEdgeMarks();
+    renderRoiPersistent();
   });
   window.setTimeout(() => {
     refreshLiveOverlayGeometry();
     renderCalibrationPoints();
     renderCylinderEdgeMarks();
+    renderRoiPersistent();
   }, 80);
 }
 
@@ -1387,6 +1414,85 @@ function toggleLiveZoom() {
     return;
   }
   enterLiveFullscreen(state.liveTracking ? "tracking" : "zoom");
+}
+
+function applyManualVideoZoom() {
+  const frame = livePreviewFrame();
+  if (!frame) return;
+  const scale = Number.isFinite(state.manualZoomScale) ? clamp(state.manualZoomScale, 1, 5) : 1;
+  const originX = Number.isFinite(state.manualZoomOrigin?.x) ? clamp(state.manualZoomOrigin.x, 0, 100) : 50;
+  const originY = Number.isFinite(state.manualZoomOrigin?.y) ? clamp(state.manualZoomOrigin.y, 0, 100) : 50;
+  frame.style.setProperty("--manual-zoom", scale.toFixed(3));
+  frame.style.setProperty("--manual-origin-x", `${originX.toFixed(2)}%`);
+  frame.style.setProperty("--manual-origin-y", `${originY.toFixed(2)}%`);
+  frame.classList.toggle("is-manual-zoomed", scale > 1.001);
+  updateManualZoomControls();
+  window.requestAnimationFrame(() => {
+    refreshLiveOverlayGeometry();
+    renderCalibrationPoints();
+    renderCylinderEdgeMarks();
+    renderRoiPersistent();
+  });
+}
+
+function resetManualVideoZoom() {
+  state.manualZoomScale = 1;
+  state.manualZoomOrigin = { x: 50, y: 50 };
+  state.manualZoomActive = false;
+  const frame = livePreviewFrame();
+  frame?.style.setProperty("--manual-zoom", "1");
+  frame?.style.setProperty("--manual-origin-x", "50%");
+  frame?.style.setProperty("--manual-origin-y", "50%");
+  frame?.classList.remove("is-manual-zoomed");
+  setManualZoomTargeting(false);
+  updateManualZoomControls();
+  window.requestAnimationFrame(() => {
+    refreshLiveOverlayGeometry();
+    renderCalibrationPoints();
+    renderCylinderEdgeMarks();
+    renderRoiPersistent();
+  });
+}
+
+function setManualZoomTargeting(active) {
+  state.manualZoomActive = Boolean(active && isLiveFullscreenActive());
+  if (el.liveZoomTargetLayer) el.liveZoomTargetLayer.hidden = !state.manualZoomActive;
+  updateManualZoomControls();
+}
+
+function toggleManualZoomTargeting() {
+  if (!isLiveFullscreenActive()) {
+    enterLiveFullscreen(state.liveTracking ? "tracking" : "zoom");
+    window.setTimeout(() => setManualZoomTargeting(true), 120);
+    return;
+  }
+  setManualZoomTargeting(!state.manualZoomActive);
+}
+
+function updateManualZoomControls() {
+  const active = isLiveFullscreenActive();
+  if (el.liveManualZoomControls) el.liveManualZoomControls.hidden = !active;
+  if (el.toggleLiveMagnifyBtn) {
+    el.toggleLiveMagnifyBtn.setAttribute("aria-pressed", state.manualZoomActive ? "true" : "false");
+    const label = el.toggleLiveMagnifyBtn.querySelector("span");
+    if (label) label.textContent = state.manualZoomActive ? `选点放大 ${state.manualZoomScale.toFixed(1)}x` : `放大镜 ${state.manualZoomScale.toFixed(1)}x`;
+  }
+}
+
+function handleManualZoomTargetClick(event) {
+  if (!state.manualZoomActive) return;
+  event.preventDefault();
+  event.stopPropagation();
+  const frame = livePreviewFrame();
+  const rect = frame?.getBoundingClientRect();
+  if (!rect?.width || !rect?.height) return;
+  state.manualZoomOrigin = {
+    x: clamp(((event.clientX - rect.left) / rect.width) * 100, 0, 100),
+    y: clamp(((event.clientY - rect.top) / rect.height) * 100, 0, 100),
+  };
+  const nextScale = state.manualZoomScale < 1.05 ? 1.8 : state.manualZoomScale * 1.35;
+  state.manualZoomScale = clamp(nextScale, 1, 5);
+  applyManualVideoZoom();
 }
 
 function calibrationPixelDistance() {
@@ -1478,6 +1584,10 @@ function layerPointToMediaNorm(event, layerRect) {
     xNorm: clamp((event.clientX - mediaRect.left) / mediaRect.width, 0, 1),
     yNorm: clamp((event.clientY - mediaRect.top) / mediaRect.height, 0, 1),
   };
+}
+
+function hideLiveMagnifier() {
+  setManualZoomTargeting(false);
 }
 
 function calibrationPointDisplay(point, layerRect) {
@@ -2159,6 +2269,7 @@ function resetCylinderEdgeMarking() {
   state.cylinderEdgeMarking = false;
   state.cylinderEdgeZoomStarted = false;
   state.cylinderEdgePoints = [];
+  hideLiveMagnifier();
   if (el.cylinderCenterX) el.cylinderCenterX.value = "50";
   if (el.cylinderWidthPct) el.cylinderWidthPct.value = "72";
   if (el.cylinderEdgeClickLayer) {
@@ -2199,6 +2310,7 @@ function handleCylinderEdgeClick(event) {
   updateCylinderOverlay();
   if (state.cylinderEdgeZoomStarted) exitCalibrationFullscreen();
   state.cylinderEdgeZoomStarted = false;
+  hideLiveMagnifier();
   if (el.fallOffsetStatus) el.fallOffsetStatus.textContent = "量筒边缘已标注";
   if (el.fallOffsetDetail) el.fallOffsetDetail.textContent = `左边缘 ${left.toFixed(1)}%，右边缘 ${right.toFixed(1)}%，中心线 ${center.toFixed(1)}%。`;
   if (FALL_OFFSET_MONITOR_ENABLED && state.liveTrajectory.length) {
@@ -2207,9 +2319,45 @@ function handleCylinderEdgeClick(event) {
 }
 
 /* ── ROI selection ── */
+function roiMediaRectFromPoints(start, current) {
+  const left = clamp(Math.min(start.x, current.x), 0, 100);
+  const top = clamp(Math.min(start.y, current.y), 0, 100);
+  const right = clamp(Math.max(start.x, current.x), 0, 100);
+  const bottom = clamp(Math.max(start.y, current.y), 0, 100);
+  return {
+    xPct: left,
+    yPct: top,
+    wPct: Math.max(0, right - left),
+    hPct: Math.max(0, bottom - top),
+  };
+}
+
+function applyRoiBoxMediaRect(box, roiRect, layerRect) {
+  if (!box || !roiRect || !layerRect) return;
+  const a = mediaNormToLayerPoint(roiRect.xPct / 100, roiRect.yPct / 100, layerRect);
+  const b = mediaNormToLayerPoint((roiRect.xPct + roiRect.wPct) / 100, (roiRect.yPct + roiRect.hPct) / 100, layerRect);
+  const left = Math.min(a.xPct, b.xPct);
+  const top = Math.min(a.yPct, b.yPct);
+  const width = Math.abs(b.xPct - a.xPct);
+  const height = Math.abs(b.yPct - a.yPct);
+  box.style.left = `${left}%`;
+  box.style.top = `${top}%`;
+  box.style.width = `${width}%`;
+  box.style.height = `${height}%`;
+}
+
+function endRoiZoomIfNeeded() {
+  const shouldExit = state.roiZoomStarted;
+  state.roiZoomStarted = false;
+  hideLiveMagnifier();
+  if (shouldExit) exitCalibrationFullscreen();
+}
+
 function startRoiSelection() {
   if (!state.liveStream) { showToast("请先连接摄像头画面。"); return; }
   state.roiSelecting = true;
+  state.roiZoomStarted = !isLiveFullscreenActive();
+  if (state.roiZoomStarted) enterLiveFullscreen("roi");
   if (el.roiSelectionLayer) el.roiSelectionLayer.hidden = false;
   if (el.roiBox) { el.roiBox.style.display = "none"; }
   showToast("在画面上拖拽框选小球下落区域，松开确认。");
@@ -2219,52 +2367,82 @@ function startRoiSelection() {
   const onDown = (e) => {
     e.preventDefault();
     const rect = layer.getBoundingClientRect();
-    const x = ((e.clientX - rect.left) / rect.width) * 100;
-    const y = ((e.clientY - rect.top) / rect.height) * 100;
+    const mediaPoint = layerPointToMediaNorm(e, rect);
+    const x = mediaPoint.xNorm * 100;
+    const y = mediaPoint.yNorm * 100;
     state.roiDragStart = { x, y };
-    if (el.roiBox) { el.roiBox.style.display = "block"; el.roiBox.style.left = x + "%"; el.roiBox.style.top = y + "%"; el.roiBox.style.width = "0"; el.roiBox.style.height = "0"; }
+    layer.setPointerCapture?.(e.pointerId);
+    if (el.roiBox) {
+      el.roiBox.style.display = "block";
+      applyRoiBoxMediaRect(el.roiBox, { xPct: x, yPct: y, wPct: 0, hPct: 0 }, rect);
+    }
   };
   const onMove = (e) => {
     if (!state.roiDragStart) return;
     e.preventDefault();
     const rect = layer.getBoundingClientRect();
-    const curX = Math.max(0, Math.min(100, ((e.clientX - rect.left) / rect.width) * 100));
-    const curY = Math.max(0, Math.min(100, ((e.clientY - rect.top) / rect.height) * 100));
-    const left = Math.min(state.roiDragStart.x, curX);
-    const top = Math.min(state.roiDragStart.y, curY);
-    const w = Math.abs(curX - state.roiDragStart.x);
-    const h = Math.abs(curY - state.roiDragStart.y);
-    if (el.roiBox) { el.roiBox.style.left = left + "%"; el.roiBox.style.top = top + "%"; el.roiBox.style.width = w + "%"; el.roiBox.style.height = h + "%"; }
+    const mediaPoint = layerPointToMediaNorm(e, rect);
+    const curX = mediaPoint.xNorm * 100;
+    const curY = mediaPoint.yNorm * 100;
+    applyRoiBoxMediaRect(el.roiBox, roiMediaRectFromPoints(state.roiDragStart, { x: curX, y: curY }), rect);
   };
   const onUp = (e) => {
     if (!state.roiDragStart) return;
     const rect = layer.getBoundingClientRect();
-    const curX = Math.max(0, Math.min(100, ((e.clientX - rect.left) / rect.width) * 100));
-    const curY = Math.max(0, Math.min(100, ((e.clientY - rect.top) / rect.height) * 100));
-    const left = Math.min(state.roiDragStart.x, curX);
-    const top = Math.min(state.roiDragStart.y, curY);
-    const w = Math.abs(curX - state.roiDragStart.x);
-    const h = Math.abs(curY - state.roiDragStart.y);
+    const mediaPoint = layerPointToMediaNorm(e, rect);
+    const curX = mediaPoint.xNorm * 100;
+    const curY = mediaPoint.yNorm * 100;
+    const roiRect = roiMediaRectFromPoints(state.roiDragStart, { x: curX, y: curY });
     state.roiDragStart = null;
-    layer.removeEventListener("mousedown", onDown);
-    layer.removeEventListener("mousemove", onMove);
-    layer.removeEventListener("mouseup", onUp);
+    layer.releasePointerCapture?.(e.pointerId);
+    layer.removeEventListener("pointerdown", onDown);
+    layer.removeEventListener("pointermove", onMove);
+    layer.removeEventListener("pointerup", onUp);
+    layer.removeEventListener("pointercancel", onCancel);
+    layer.removeEventListener("pointerleave", onLeave);
     if (el.roiSelectionLayer) el.roiSelectionLayer.hidden = true;
-    if (w < 3 || h < 3) { showToast("选区太小，请重新框选。"); state.roiRect = null; renderRoiPersistent(); return; }
-    state.roiRect = { xPct: left, yPct: top, wPct: w, hPct: h };
+    if (roiRect.wPct < 3 || roiRect.hPct < 3) {
+      showToast("选区太小，请重新框选。");
+      state.roiRect = null;
+      state.roiSelecting = false;
+      renderRoiPersistent();
+      endRoiZoomIfNeeded();
+      return;
+    }
+    state.roiRect = roiRect;
     state.roiSelecting = false;
     renderRoiPersistent();
-    showToast(`检测区域已设定：${w.toFixed(0)}% × ${h.toFixed(0)}%，AI 将只在此区域内寻找小球。`);
+    endRoiZoomIfNeeded();
+    showToast(`检测区域已设定：${roiRect.wPct.toFixed(0)}% × ${roiRect.hPct.toFixed(0)}%，AI 将只在此区域内寻找小球。`);
   };
-  layer.addEventListener("mousedown", onDown);
-  layer.addEventListener("mousemove", onMove);
-  layer.addEventListener("mouseup", onUp);
+  const onCancel = (e) => {
+    state.roiDragStart = null;
+    state.roiSelecting = false;
+    layer.releasePointerCapture?.(e.pointerId);
+    layer.removeEventListener("pointerdown", onDown);
+    layer.removeEventListener("pointermove", onMove);
+    layer.removeEventListener("pointerup", onUp);
+    layer.removeEventListener("pointercancel", onCancel);
+    layer.removeEventListener("pointerleave", onLeave);
+    if (el.roiSelectionLayer) el.roiSelectionLayer.hidden = true;
+    endRoiZoomIfNeeded();
+  };
+  const onLeave = () => {
+    if (!state.roiDragStart) hideLiveMagnifier();
+  };
+  layer.addEventListener("pointerdown", onDown);
+  layer.addEventListener("pointermove", onMove);
+  layer.addEventListener("pointerup", onUp);
+  layer.addEventListener("pointercancel", onCancel);
+  layer.addEventListener("pointerleave", onLeave);
 }
 
 function clearRoiSelection() {
   state.roiRect = null;
   state.roiSelecting = false;
+  state.roiDragStart = null;
   if (el.roiSelectionLayer) el.roiSelectionLayer.hidden = true;
+  endRoiZoomIfNeeded();
   renderRoiPersistent();
   showToast("检测区域已清除，将使用全画面检测。");
 }
@@ -2272,13 +2450,10 @@ function clearRoiSelection() {
 function renderRoiPersistent() {
   let box = document.querySelector(".roi-box-persistent");
   if (!state.roiRect) { if (box) box.remove(); return; }
-  const frame = document.querySelector(".live-preview-frame");
+  const frame = livePreviewFrame();
   if (!frame) return;
   if (!box) { box = document.createElement("div"); box.className = "roi-box-persistent"; frame.appendChild(box); }
-  box.style.left = state.roiRect.xPct + "%";
-  box.style.top = state.roiRect.yPct + "%";
-  box.style.width = state.roiRect.wPct + "%";
-  box.style.height = state.roiRect.hPct + "%";
+  applyRoiBoxMediaRect(box, state.roiRect, frame.getBoundingClientRect());
 }
 
 function getRoiPixels() {
@@ -4152,6 +4327,9 @@ function bind() {
   el.finishCalibrationBtn?.addEventListener("click", finishManualCalibration);
   el.exitCalibrationFullscreenBtn?.addEventListener("click", exitCalibrationFullscreen);
   el.toggleLiveZoomBtn?.addEventListener("click", toggleLiveZoom);
+  el.toggleLiveMagnifyBtn?.addEventListener("click", toggleManualZoomTargeting);
+  el.resetLiveMagnifyBtn?.addEventListener("click", resetManualVideoZoom);
+  el.liveZoomTargetLayer?.addEventListener("click", handleManualZoomTargetClick);
   document.addEventListener("fullscreenchange", handleFullscreenChange);
   el.calibrationClickLayer?.addEventListener("click", handleCalibrationClick);
   el.calibrationClickLayer?.addEventListener("pointermove", (event) => {

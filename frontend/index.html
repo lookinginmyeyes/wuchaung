@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>落球法测液体粘滞系数实验 AI 学习平台</title>
     <link rel="icon" href="./assets/generated/icons/calibration.png" />
-    <link rel="stylesheet" href="./styles.css?v=auto-calibration-endpoint-v91" />
+    <link rel="stylesheet" href="./styles.css?v=manual-video-zoom-v94" />
   </head>
   <body>
     <div class="app-shell">
@@ -407,6 +407,17 @@
                     <div id="roiSelectionLayer" class="roi-selection-layer" hidden>
                       <div id="roiBox" class="roi-box"></div>
                     </div>
+                    <button id="liveZoomTargetLayer" class="live-zoom-target-layer" type="button" hidden>
+                      <span>点击画面放大</span>
+                    </button>
+                    <div id="liveManualZoomControls" class="live-manual-zoom-controls" hidden>
+                      <button id="toggleLiveMagnifyBtn" class="live-manual-zoom-button" type="button" aria-pressed="false">
+                        <span>放大镜</span>
+                      </button>
+                      <button id="resetLiveMagnifyBtn" class="live-manual-zoom-button" type="button">
+                        <span>重置</span>
+                      </button>
+                    </div>
                     <button id="toggleLiveZoomBtn" class="live-zoom-toggle" type="button">
                       <span>放大画面</span>
                     </button>
@@ -500,7 +511,7 @@
                       </div>
                       <div class="live-action-group">
                         <span class="live-action-title">检测区域</span>
-                        <button id="startRoiSelectBtn" class="ghost-button" type="button" disabled>
+                        <button id="startRoiSelectBtn" class="ghost-button roi-select-button" type="button" disabled>
                           <img class="button-art" src="./assets/generated/buttons/quick-boundary.png" alt="" />
                           <span>框选检测区域</span>
                         </button>
@@ -1203,6 +1214,6 @@
     </div>
 
     <div id="toast" class="toast"></div>
-    <script src="./app.js?v=auto-calibration-endpoint-v91"></script>
+    <script src="./app.js?v=manual-video-zoom-v94"></script>
   </body>
 </html>
