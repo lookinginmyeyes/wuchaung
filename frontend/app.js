@@ -6,7 +6,15 @@ const LIVE_BACKEND_FAILURE_LIMIT = 5;
 const LIVE_TRAJECTORY_LIMIT = 2400;
 const LIVE_MAX_IN_FLIGHT_FRAMES = 2;
 const FALL_OFFSET_MONITOR_ENABLED = true;
-const API_BASE_URL = window.location.protocol === "file:" ? "http://127.0.0.1:8877" : "";
+const LOCAL_API_BASE_URL = "http://127.0.0.1:8877";
+const API_BASE_URL = (() => {
+  const params = new URLSearchParams(window.location.search);
+  const configured = params.get("api") || window.localStorage?.getItem("fallingBallApiBase") || "";
+  if (configured) return configured.replace(/\/$/, "");
+  const host = window.location.hostname;
+  const isStaticPage = window.location.protocol === "file:" || host.endsWith("github.io");
+  return isStaticPage ? LOCAL_API_BASE_URL : "";
+})();
 
 const state = {
   latest: null,
@@ -795,13 +803,21 @@ function apiUrl(path) {
 }
 
 async function api(path, options = {}) {
-  const response = await fetch(apiUrl(path), {
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...(options.headers || {}),
-    },
-  });
+  let response;
+  try {
+    response = await fetch(apiUrl(path), {
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...(options.headers || {}),
+      },
+    });
+  } catch (error) {
+    if (API_BASE_URL) {
+      throw new Error(`无法连接本地后端 ${API_BASE_URL}。网站版实时识别需要先在这台电脑启动平台后端，再重新尝试。`);
+    }
+    throw error;
+  }
   if (!response.ok) {
     let detail = `${response.status} ${response.statusText}`;
     try {

@@ -1,6 +1,7 @@
 __pycache__/
 *.pyc
 .venv/
+.deploy/
 /*.png
 data/
 .DS_Store
