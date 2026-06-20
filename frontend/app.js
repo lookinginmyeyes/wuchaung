@@ -6,6 +6,7 @@ const LIVE_BACKEND_FAILURE_LIMIT = 5;
 const LIVE_TRAJECTORY_LIMIT = 2400;
 const LIVE_MAX_IN_FLIGHT_FRAMES = 2;
 const FALL_OFFSET_MONITOR_ENABLED = true;
+const API_BASE_URL = window.location.protocol === "file:" ? "http://127.0.0.1:8877" : "";
 
 const state = {
   latest: null,
@@ -788,8 +789,13 @@ function payload() {
   };
 }
 
+function apiUrl(path) {
+  if (/^https?:\/\//i.test(path)) return path;
+  return `${API_BASE_URL}${path}`;
+}
+
 async function api(path, options = {}) {
-  const response = await fetch(path, {
+  const response = await fetch(apiUrl(path), {
     ...options,
     headers: {
       "Content-Type": "application/json",
@@ -833,7 +839,7 @@ async function ensureVisionRuntimeReady() {
 
 async function uploadRunVideo(runId, blob) {
   if (!runId || !blob?.size) return null;
-  const response = await fetch(`/api/runs/${runId}/video`, {
+  const response = await fetch(apiUrl(`/api/runs/${runId}/video`), {
     method: "POST",
     headers: { "Content-Type": blob.type || "video/webm" },
     body: blob,
@@ -2161,7 +2167,7 @@ async function postLiveFrame(blob, frameTimestamp, frameIndex) {
   // ROI cropping is now done in liveFrameBlob() before sending,
   // so no need to pass roi params to backend.
   appendNonlinearCorrectionParams(params);
-  const response = await fetch(`/api/video/frame?${params.toString()}`, {
+  const response = await fetch(apiUrl(`/api/video/frame?${params.toString()}`), {
     method: "POST",
     headers: { "Content-Type": blob.type || "image/jpeg" },
     body: blob,
@@ -2759,7 +2765,7 @@ async function trackSelectedVideo(file) {
   });
   if (scale) params.set("scale_m_per_px", String(scale));
   appendNonlinearCorrectionParams(params);
-  const response = await fetch(`/api/video/track?${params.toString()}`, {
+  const response = await fetch(apiUrl(`/api/video/track?${params.toString()}`), {
     method: "POST",
     headers: { "Content-Type": file.type || "video/mp4" },
     body: file,
