@@ -7,7 +7,7 @@ const LIVE_TRAJECTORY_LIMIT = 2400;
 const LIVE_MAX_IN_FLIGHT_FRAMES = 2;
 const FALL_OFFSET_MONITOR_ENABLED = true;
 const LOCAL_API_BASE_URL = "http://127.0.0.1:8877";
-const HOSTED_API_BASE_URL = "https://42-194-177-159.sslip.io";
+const HOSTED_API_BASE_URL = "https://42.194.177.159.nip.io";
 const API_BASE_URL = (() => {
   const params = new URLSearchParams(window.location.search);
   const configured = params.get("api") || window.localStorage?.getItem("fallingBallApiBase") || "";
