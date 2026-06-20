@@ -7,13 +7,15 @@ const LIVE_TRAJECTORY_LIMIT = 2400;
 const LIVE_MAX_IN_FLIGHT_FRAMES = 2;
 const FALL_OFFSET_MONITOR_ENABLED = true;
 const LOCAL_API_BASE_URL = "http://127.0.0.1:8877";
+const HOSTED_API_BASE_URL = "https://42-194-177-159.sslip.io";
 const API_BASE_URL = (() => {
   const params = new URLSearchParams(window.location.search);
   const configured = params.get("api") || window.localStorage?.getItem("fallingBallApiBase") || "";
   if (configured) return configured.replace(/\/$/, "");
   const host = window.location.hostname;
-  const isStaticPage = window.location.protocol === "file:" || host.endsWith("github.io");
-  return isStaticPage ? LOCAL_API_BASE_URL : "";
+  if (host.endsWith("github.io")) return HOSTED_API_BASE_URL;
+  if (window.location.protocol === "file:") return LOCAL_API_BASE_URL;
+  return "";
 })();
 
 const state = {
@@ -814,7 +816,7 @@ async function api(path, options = {}) {
     });
   } catch (error) {
     if (API_BASE_URL) {
-      throw new Error(`无法连接本地后端 ${API_BASE_URL}。网站版实时识别需要先在这台电脑启动平台后端，再重新尝试。`);
+      throw new Error(`无法连接后端 ${API_BASE_URL}。请确认服务器后端已经启动，或在网址参数 ?api= 中指定可用后端地址。`);
     }
     throw error;
   }
@@ -3428,7 +3430,7 @@ function renderRun(run) {
   el.score.textContent = formatScore(student.score);
   el.runBadge.textContent = run.id ? `记录 #${run.id}` : "仿真对照";
   if (run.id) {
-    el.downloadReport.href = `/api/runs/${run.id}/report`;
+    el.downloadReport.href = apiUrl(`/api/runs/${run.id}/report`);
     el.downloadReport.classList.remove("disabled");
   } else {
     el.downloadReport.href = "#";
