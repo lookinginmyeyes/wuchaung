@@ -412,36 +412,59 @@ def crop_roi(frame, roi):
 
 def detect_ball(frame, config: VideoTrackConfig) -> dict[str, float | str] | None:
     import cv2 as cv  # type: ignore
+    import numpy as np  # type: ignore
 
     gray = cv.cvtColor(frame, cv.COLOR_BGR2GRAY)
     gray = cv.medianBlur(gray, 5)
-    hough = cv.HoughCircles(
-        gray,
-        cv.HOUGH_GRADIENT,
-        dp=1.2,
-        minDist=max(8, config.min_radius_px * 2),
-        param1=90,
-        param2=28,
-        minRadius=config.min_radius_px,
-        maxRadius=config.max_radius_px or 0,
-    )
-    if hough is not None and len(hough[0]) > 0:
-        circle = sorted(hough[0], key=lambda item: item[2], reverse=True)[0]
-        return {"x": float(circle[0]), "y": float(circle[1]), "radius": float(circle[2]), "confidence": 0.88, "method": "hough_circle"}
+    for param1, param2, confidence in ((90, 28, 0.88), (70, 18, 0.78)):
+        hough = cv.HoughCircles(
+            gray,
+            cv.HOUGH_GRADIENT,
+            dp=1.2,
+            minDist=max(6, config.min_radius_px * 2),
+            param1=param1,
+            param2=param2,
+            minRadius=config.min_radius_px,
+            maxRadius=config.max_radius_px or 0,
+        )
+        if hough is not None and len(hough[0]) > 0:
+            circle = sorted(hough[0], key=lambda item: item[2], reverse=True)[0]
+            return {
+                "x": float(circle[0]),
+                "y": float(circle[1]),
+                "radius": float(circle[2]),
+                "confidence": confidence,
+                "method": "hough_circle",
+            }
 
-    _, binary = cv.threshold(gray, 0, 255, cv.THRESH_BINARY + cv.THRESH_OTSU)
-    if binary.mean() > 127:
-        binary = cv.bitwise_not(binary)
+    dark_cutoff = int(np.percentile(gray, 42))
+    _, otsu_binary = cv.threshold(gray, 0, 255, cv.THRESH_BINARY + cv.THRESH_OTSU)
+    if otsu_binary.mean() > 127:
+        otsu_binary = cv.bitwise_not(otsu_binary)
+    _, dark_binary = cv.threshold(gray, min(245, dark_cutoff + 12), 255, cv.THRESH_BINARY_INV)
+    adaptive_binary = cv.adaptiveThreshold(
+        gray,
+        255,
+        cv.ADAPTIVE_THRESH_GAUSSIAN_C,
+        cv.THRESH_BINARY_INV,
+        21,
+        3,
+    )
+    binary = cv.bitwise_or(otsu_binary, dark_binary)
+    binary = cv.bitwise_or(binary, adaptive_binary)
     kernel = cv.getStructuringElement(cv.MORPH_ELLIPSE, (3, 3))
     binary = cv.morphologyEx(binary, cv.MORPH_OPEN, kernel)
+    binary = cv.morphologyEx(binary, cv.MORPH_CLOSE, kernel)
     contours, _ = cv.findContours(binary, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)
     candidates = []
+    min_radius = max(1, config.min_radius_px)
+    min_area = math.pi * min_radius * min_radius * 0.35
     for contour in contours:
         area = cv.contourArea(contour)
-        if area < math.pi * config.min_radius_px * config.min_radius_px:
+        if area < min_area:
             continue
         (x, y), radius = cv.minEnclosingCircle(contour)
-        if radius < config.min_radius_px:
+        if radius < min_radius * 0.75:
             continue
         if config.max_radius_px is not None and radius > config.max_radius_px:
             continue
@@ -449,20 +472,22 @@ def detect_ball(frame, config: VideoTrackConfig) -> dict[str, float | str] | Non
         # --- Reject non-circular shapes (e.g. refraction lines) ---
         bx, by, bw, bh = cv.boundingRect(contour)
         aspect = max(bw, bh) / max(min(bw, bh), 1)
-        if aspect > 2.5:
+        if aspect > 3.2:
             # A ball is roughly round; a refraction line is tall and thin.
-            # Aspect ratio > 2.5 means one side is 2.5x the other → not a ball.
+            # Aspect ratio > 3.2 means one side is far longer than the other.
             continue
 
         circle_area = math.pi * radius * radius
         fill_ratio = area / max(1.0, circle_area)
-        if fill_ratio < 0.45:
+        if fill_ratio < 0.28:
             continue
-        candidates.append((fill_ratio, area, x, y, radius))
+        compactness = min(1.0, (4 * math.pi * area) / max(1.0, cv.arcLength(contour, True) ** 2))
+        score = fill_ratio * 0.65 + compactness * 0.35
+        candidates.append((score, fill_ratio, area, x, y, radius))
     if not candidates:
         return None
     # Prefer the most circular candidate (highest fill_ratio), not just the largest
-    fill_ratio, area, x, y, radius = sorted(candidates, key=lambda item: item[0], reverse=True)[0]
+    _, fill_ratio, area, x, y, radius = sorted(candidates, key=lambda item: item[0], reverse=True)[0]
     confidence = max(0.35, min(0.78, 0.45 + fill_ratio * 0.35))
     return {"x": float(x), "y": float(y), "radius": float(radius), "confidence": confidence, "method": "contour_fallback"}
 

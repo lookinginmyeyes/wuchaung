@@ -2178,7 +2178,7 @@ async function postLiveFrame(blob, frameTimestamp, frameIndex) {
   const params = new URLSearchParams({
     frame: String(frameIndex),
     t: String(frameTimestamp.toFixed(4)),
-    min_radius_px: "3",
+    min_radius_px: "2",
   });
   const scale = estimateScaleMetersPerPixel();
   if (scale) params.set("scale_m_per_px", String(scale / Math.max(state.liveFrameScale || 1, 1e-6)));
@@ -2778,7 +2778,7 @@ async function trackSelectedVideo(file) {
   const params = new URLSearchParams({
     frame_step: "1",
     max_frames: "1200",
-    min_radius_px: "3",
+    min_radius_px: "2",
     use_norfair: "false",
   });
   if (scale) params.set("scale_m_per_px", String(scale));
