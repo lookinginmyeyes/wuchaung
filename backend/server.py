@@ -9,12 +9,12 @@ from urllib.parse import parse_qs, unquote, urlparse
 try:
     from .modules import module_summary, readiness_summary
     from .physics import analyze_trajectory, answer_question, build_params, build_simulation, inspect_video_metadata
-    from .storage import VIDEO_DIR, attach_run_video, build_report_text, delete_run, delete_runs, get_run, init_db, latest_run, list_runs, save_run
+    from .storage import VIDEO_DIR, attach_run_video, build_report_text, delete_run, delete_runs, get_run, init_db, latest_run, list_runs, save_run, storage_status
     from .vision import build_video_track_config, detect_ball_from_image_bytes, extract_trajectory_from_video_bytes, inspect_vision_runtime
 except ImportError:
     from modules import module_summary, readiness_summary
     from physics import analyze_trajectory, answer_question, build_params, build_simulation, inspect_video_metadata
-    from storage import VIDEO_DIR, attach_run_video, build_report_text, delete_run, delete_runs, get_run, init_db, latest_run, list_runs, save_run
+    from storage import VIDEO_DIR, attach_run_video, build_report_text, delete_run, delete_runs, get_run, init_db, latest_run, list_runs, save_run, storage_status
     from vision import build_video_track_config, detect_ball_from_image_bytes, extract_trajectory_from_video_bytes, inspect_vision_runtime
 
 
@@ -37,7 +37,7 @@ class PlatformHandler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:
         parsed = urlparse(self.path)
         if parsed.path == "/api/health":
-            self.send_json({"ok": True, "name": "falling-ball-ai-platform"})
+            self.send_json({"ok": True, "name": "falling-ball-ai-platform", "storage": storage_status()})
             return
         if parsed.path == "/api/modules":
             self.send_json(module_summary())
