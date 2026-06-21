@@ -1,6 +1,7 @@
-const LIVE_FRAME_INTERVAL_MS = 24;
-const LIVE_FRAME_MAX_WIDTH = 1280;
-const LIVE_FRAME_JPEG_QUALITY = 0.86;
+const LIVE_FRAME_INTERVAL_MS = 36;
+const LIVE_FRAME_MAX_WIDTH = 1920;
+const LIVE_FRAME_JPEG_QUALITY = 0.92;
+const LIVE_MIN_TRACK_CONFIDENCE = 0.38;
 const LIVE_CHART_INTERVAL_MS = 120;
 const LIVE_BACKEND_FAILURE_LIMIT = 5;
 const LIVE_TRAJECTORY_LIMIT = 2400;
@@ -2103,7 +2104,7 @@ async function captureLiveFrame(metadata = null) {
     state.liveBackendFailures = 0;
     if (result.detected) {
       const point = liveDetectionToTrajectoryPoint(result);
-      const isHighConfidence = point.confidence >= 0.50;
+      const isHighConfidence = point.confidence >= LIVE_MIN_TRACK_CONFIDENCE;
       if (isHighConfidence) {
         insertLiveTrajectoryPoint(point);
         if (state.liveTrajectory.length > LIVE_TRAJECTORY_LIMIT) state.liveTrajectory.shift();
@@ -2187,7 +2188,7 @@ async function postLiveFrame(blob, frameTimestamp, frameIndex) {
   const params = new URLSearchParams({
     frame: String(frameIndex),
     t: String(frameTimestamp.toFixed(4)),
-    min_radius_px: "2",
+    min_radius_px: "1",
   });
   const scale = estimateScaleMetersPerPixel();
   if (scale) params.set("scale_m_per_px", String(scale / Math.max(state.liveFrameScale || 1, 1e-6)));

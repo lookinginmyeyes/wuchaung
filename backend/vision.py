@@ -416,34 +416,42 @@ def detect_ball(frame, config: VideoTrackConfig) -> dict[str, float | str] | Non
 
     gray = cv.cvtColor(frame, cv.COLOR_BGR2GRAY)
     gray = cv.medianBlur(gray, 5)
-    for param1, param2, confidence in ((90, 28, 0.88), (70, 18, 0.78)):
-        hough = cv.HoughCircles(
-            gray,
-            cv.HOUGH_GRADIENT,
-            dp=1.2,
-            minDist=max(6, config.min_radius_px * 2),
-            param1=param1,
-            param2=param2,
-            minRadius=config.min_radius_px,
-            maxRadius=config.max_radius_px or 0,
-        )
-        if hough is not None and len(hough[0]) > 0:
-            circle = sorted(hough[0], key=lambda item: item[2], reverse=True)[0]
-            return {
-                "x": float(circle[0]),
-                "y": float(circle[1]),
-                "radius": float(circle[2]),
-                "confidence": confidence,
-                "method": "hough_circle",
-            }
+    enhanced = cv.createCLAHE(clipLimit=2.2, tileGridSize=(8, 8)).apply(gray)
+    hough_sources = ((gray, "hough_circle"), (enhanced, "hough_circle_enhanced"))
+    for source, method in hough_sources:
+        for param1, param2, confidence in ((90, 28, 0.88), (70, 18, 0.78), (55, 14, 0.68)):
+            hough = cv.HoughCircles(
+                source,
+                cv.HOUGH_GRADIENT,
+                dp=1.2,
+                minDist=max(5, config.min_radius_px * 2),
+                param1=param1,
+                param2=param2,
+                minRadius=config.min_radius_px,
+                maxRadius=config.max_radius_px or 0,
+            )
+            if hough is not None and len(hough[0]) > 0:
+                circle = sorted(hough[0], key=lambda item: item[2], reverse=True)[0]
+                return {
+                    "x": float(circle[0]),
+                    "y": float(circle[1]),
+                    "radius": float(circle[2]),
+                    "confidence": confidence,
+                    "method": method,
+                }
 
     dark_cutoff = int(np.percentile(gray, 42))
+    enhanced_cutoff = int(np.percentile(enhanced, 42))
     _, otsu_binary = cv.threshold(gray, 0, 255, cv.THRESH_BINARY + cv.THRESH_OTSU)
     if otsu_binary.mean() > 127:
         otsu_binary = cv.bitwise_not(otsu_binary)
+    _, enhanced_otsu = cv.threshold(enhanced, 0, 255, cv.THRESH_BINARY + cv.THRESH_OTSU)
+    if enhanced_otsu.mean() > 127:
+        enhanced_otsu = cv.bitwise_not(enhanced_otsu)
     _, dark_binary = cv.threshold(gray, min(245, dark_cutoff + 12), 255, cv.THRESH_BINARY_INV)
+    _, enhanced_dark = cv.threshold(enhanced, min(245, enhanced_cutoff + 10), 255, cv.THRESH_BINARY_INV)
     adaptive_binary = cv.adaptiveThreshold(
-        gray,
+        enhanced,
         255,
         cv.ADAPTIVE_THRESH_GAUSSIAN_C,
         cv.THRESH_BINARY_INV,
@@ -451,6 +459,8 @@ def detect_ball(frame, config: VideoTrackConfig) -> dict[str, float | str] | Non
         3,
     )
     binary = cv.bitwise_or(otsu_binary, dark_binary)
+    binary = cv.bitwise_or(binary, enhanced_otsu)
+    binary = cv.bitwise_or(binary, enhanced_dark)
     binary = cv.bitwise_or(binary, adaptive_binary)
     kernel = cv.getStructuringElement(cv.MORPH_ELLIPSE, (3, 3))
     binary = cv.morphologyEx(binary, cv.MORPH_OPEN, kernel)
@@ -458,7 +468,7 @@ def detect_ball(frame, config: VideoTrackConfig) -> dict[str, float | str] | Non
     contours, _ = cv.findContours(binary, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)
     candidates = []
     min_radius = max(1, config.min_radius_px)
-    min_area = math.pi * min_radius * min_radius * 0.35
+    min_area = max(2.0, math.pi * min_radius * min_radius * 0.3)
     for contour in contours:
         area = cv.contourArea(contour)
         if area < min_area:
@@ -479,7 +489,7 @@ def detect_ball(frame, config: VideoTrackConfig) -> dict[str, float | str] | Non
 
         circle_area = math.pi * radius * radius
         fill_ratio = area / max(1.0, circle_area)
-        if fill_ratio < 0.28:
+        if fill_ratio < 0.24:
             continue
         compactness = min(1.0, (4 * math.pi * area) / max(1.0, cv.arcLength(contour, True) ** 2))
         score = fill_ratio * 0.65 + compactness * 0.35
