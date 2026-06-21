@@ -4909,7 +4909,7 @@ input[type="range"]:focus-visible {
 
 .diagnosis-layout {
   display: grid;
-  grid-template-columns: minmax(460px, 0.9fr) minmax(420px, 1fr);
+  grid-template-columns: minmax(0, 1fr);
   gap: 18px;
 }
 
@@ -4917,14 +4917,16 @@ input[type="range"]:focus-visible {
 .diagnosis-view .assistant-section {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
+  min-height: 0;
 }
 
 .diagnosis-view .table-wrap {
-  min-height: 360px;
+  min-height: 300px;
+  max-height: min(52dvh, 560px);
 }
 
 .diagnosis-view .assistant-grid {
-  grid-template-columns: 1fr;
+  grid-template-columns: minmax(220px, 0.34fr) minmax(0, 1fr);
   align-items: stretch;
 }
 
@@ -4933,14 +4935,14 @@ input[type="range"]:focus-visible {
 }
 
 .diagnosis-view .chat-panel {
-  min-height: 360px;
+  min-height: 320px;
   display: grid;
   grid-template-rows: minmax(0, 1fr) auto;
 }
 
 .diagnosis-view .chat-log {
-  min-height: 260px;
-  max-height: none;
+  min-height: 220px;
+  max-height: min(44dvh, 440px);
 }
 
 .record-actions {
@@ -5077,7 +5079,7 @@ input[type="range"]:focus-visible {
 table {
   width: 100%;
   border-collapse: collapse;
-  min-width: 960px;
+  min-width: 860px;
   background: #fff;
 }
 
@@ -5114,6 +5116,16 @@ td {
 
 .record-row-actions {
   white-space: nowrap;
+  position: sticky;
+  right: 0;
+  z-index: 1;
+  background: #fff;
+  box-shadow: -12px 0 18px -18px rgba(28, 42, 35, 0.45);
+}
+
+th.record-row-actions {
+  z-index: 2;
+  background: #f7f9f6;
 }
 
 .record-row-actions .table-action + .table-action {
@@ -6973,7 +6985,8 @@ svg {
   .video-pipeline-list,
   .operations-grid,
   .system-config,
-  .diagnosis-layout {
+  .diagnosis-layout,
+  .diagnosis-view .assistant-grid {
     grid-template-columns: 1fr;
   }
 
