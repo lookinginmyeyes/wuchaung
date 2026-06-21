@@ -192,6 +192,7 @@ const el = {
   filePicker: document.querySelector(".file-picker"),
   runBadge: document.getElementById("runBadge"),
   terminalVelocity: document.getElementById("terminalVelocity"),
+  uniformSegmentLength: document.getElementById("uniformSegmentLength"),
   idealViscosity: document.getElementById("idealViscosity"),
   viscosity: document.getElementById("viscosity"),
   r2: document.getElementById("r2"),
@@ -776,6 +777,14 @@ function estimateUniformSegmentSpan(run, terminalVelocity) {
   }
   if (!Number.isFinite(distanceM) || distanceM <= 0) return null;
   return { timeS, distanceM };
+}
+
+function formatUniformSegmentLength(span) {
+  const distanceM = finiteNumber(span?.distanceM);
+  if (distanceM === null || distanceM <= 0) return "--";
+  const distanceMm = distanceM * 1000;
+  if (distanceMm >= 100) return `${(distanceMm / 10).toFixed(1)} cm`;
+  return `${distanceMm.toFixed(1)} mm`;
 }
 
 function payload() {
@@ -2596,6 +2605,7 @@ function renderLiveTrackingPreview() {
   const run = buildLivePreviewRun(state.liveTrajectory);
   state.latest = run;
   el.terminalVelocity.textContent = "--";
+  el.uniformSegmentLength.textContent = "--";
   el.idealViscosity.textContent = "--";
   el.viscosity.textContent = "--";
   el.r2.textContent = "--";
@@ -2965,6 +2975,7 @@ function formatFileSize(bytes) {
 
 function renderEmptyState() {
   el.terminalVelocity.textContent = "--";
+  el.uniformSegmentLength.textContent = "--";
   el.idealViscosity.textContent = "--";
   el.viscosity.textContent = "--";
   el.r2.textContent = "--";
@@ -3415,6 +3426,7 @@ function renderRun(run) {
   const preprocessing = quality.preprocessing || {};
   const idealEta = idealViscosityFromRun(run);
   el.terminalVelocity.textContent = `${result.terminal_velocity.toFixed(4)} m/s`;
+  el.uniformSegmentLength.textContent = formatUniformSegmentLength(estimateUniformSegmentSpan(run, result.terminal_velocity));
   el.idealViscosity.textContent = idealEta === null ? "--" : `${formatPaS(idealEta)} Pa·s`;
   el.viscosity.textContent = `${formatPaS(result.viscosity)} Pa·s`;
   el.r2.textContent = result.r2.toFixed(3);
