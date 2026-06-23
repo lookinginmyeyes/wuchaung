@@ -1623,6 +1623,10 @@ body.calibration-fullscreen-active {
   transform: translateX(-50%);
 }
 
+.live-preview-frame.is-axis-calibrating .cylinder-center-overlay {
+  display: none;
+}
+
 .ball-offset-marker {
   position: absolute;
   width: 12px;

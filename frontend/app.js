@@ -2,6 +2,10 @@ const LIVE_FRAME_INTERVAL_MS = 36;
 const LIVE_FRAME_MAX_WIDTH = 1920;
 const LIVE_FRAME_JPEG_QUALITY = 0.92;
 const LIVE_MIN_TRACK_CONFIDENCE = 0.38;
+const LIVE_STATIC_POINT_LIMIT = 5;
+const LIVE_STATIC_POINT_MATCH_NORM = 0.006;
+const LIVE_STATIC_POINT_RADIUS_NORM = 0.018;
+const LIVE_STATIC_POINT_MAX_ZONES = 8;
 const LIVE_CHART_INTERVAL_MS = 120;
 const LIVE_BACKEND_FAILURE_LIMIT = 5;
 const LIVE_TRAJECTORY_LIMIT = 2400;
@@ -42,6 +46,8 @@ const state = {
   lastLiveFrameCaptureAt: 0,
   liveFrameScale: 1,
   liveTrajectory: [],
+  liveStaticCandidate: null,
+  liveIgnoreZones: [],
   liveMisses: 0,
   liveBackendFailures: 0,
   liveChartDrawTimer: null,
@@ -1202,6 +1208,7 @@ function startManualCalibration() {
   el.calibrationClickLayer.disabled = false;
   el.calibrationClickLayer.classList.add("is-calibrating");
   el.calibrationClickLayer.dataset.hint = calibrationClickHint(0);
+  livePreviewFrame()?.classList.add("is-axis-calibrating");
   if (el.finishCalibrationBtn) el.finishCalibrationBtn.hidden = true;
   el.realtimeImportPanel?.classList.add("calibration-focus");
   enterLiveFullscreen("calibration");
@@ -1228,6 +1235,7 @@ function resetManualCalibrationState() {
     el.calibrationClickLayer.classList.remove("is-calibrating");
     delete el.calibrationClickLayer.dataset.hint;
   }
+  livePreviewFrame()?.classList.remove("is-axis-calibrating");
   if (el.finishCalibrationBtn) el.finishCalibrationBtn.hidden = true;
   hideLiveMagnifier();
   exitCalibrationFullscreen();
@@ -1315,6 +1323,7 @@ function finishManualCalibration() {
   state.calibrationEditIndex = null;
   hideLiveMagnifier();
   exitCalibrationFullscreen();
+  livePreviewFrame()?.classList.remove("is-axis-calibrating");
   if (el.calibrationClickLayer) {
     el.calibrationClickLayer.disabled = true;
     el.calibrationClickLayer.classList.remove("is-calibrating");
@@ -1908,6 +1917,8 @@ async function startLiveRecording() {
   state.liveTrackingStart = performance.now();
   state.liveTrackingMediaStart = null;
   state.liveTrajectory = [];
+  state.liveStaticCandidate = null;
+  state.liveIgnoreZones = [];
   state.liveMisses = 0;
   state.liveBackendFailures = 0;
   state.liveFrameBusy = false;
@@ -2103,6 +2114,11 @@ async function captureLiveFrame(metadata = null) {
     const result = await postLiveFrame(frameBlob, frameTimestamp, frameIndex);
     state.liveBackendFailures = 0;
     if (result.detected) {
+      if (updateLiveStaticIgnoreZones(result)) {
+        state.liveMisses += 1;
+        if (el.liveModelStatus) el.liveModelStatus.textContent = `已屏蔽静态误判点 ${state.liveIgnoreZones.length} 个`;
+        return;
+      }
       const point = liveDetectionToTrajectoryPoint(result);
       const isHighConfidence = point.confidence >= LIVE_MIN_TRACK_CONFIDENCE;
       if (isHighConfidence) {
@@ -2188,8 +2204,11 @@ async function postLiveFrame(blob, frameTimestamp, frameIndex) {
   const params = new URLSearchParams({
     frame: String(frameIndex),
     t: String(frameTimestamp.toFixed(4)),
-    min_radius_px: "1",
+    min_radius_px: "3",
   });
+  if (state.liveIgnoreZones.length) {
+    params.set("ignore_zones", JSON.stringify(state.liveIgnoreZones));
+  }
   const scale = estimateScaleMetersPerPixel();
   if (scale) params.set("scale_m_per_px", String(scale / Math.max(state.liveFrameScale || 1, 1e-6)));
   // ROI cropping is now done in liveFrameBlob() before sending,
@@ -2216,6 +2235,75 @@ async function postLiveFrame(blob, frameTimestamp, frameIndex) {
     throw error;
   }
   return response.json();
+}
+
+function liveDetectionBackendPoint(result) {
+  const x = finiteNumber(result?.x);
+  const yPx = finiteNumber(result?.y_px);
+  const width = finiteNumber(result?.metadata?.width);
+  const height = finiteNumber(result?.metadata?.height);
+  if (x === null || yPx === null || height === null || height <= 0) return null;
+  const y = Math.max(0, Math.min(1, yPx / height));
+  const radiusPx = finiteNumber(result?.radius_px);
+  const radiusNorm = radiusPx !== null && width !== null && width > 0
+    ? Math.max(LIVE_STATIC_POINT_RADIUS_NORM, (radiusPx / Math.max(1, Math.min(width, height))) * 2.6)
+    : LIVE_STATIC_POINT_RADIUS_NORM;
+  return {
+    x: Math.max(0, Math.min(1, x)),
+    y,
+    r: Math.max(LIVE_STATIC_POINT_RADIUS_NORM, Math.min(0.06, radiusNorm)),
+    t: finiteNumber(result?.t) ?? ((performance.now() - state.liveTrackingStart) / 1000),
+  };
+}
+
+function distanceNorm(a, b) {
+  return Math.hypot(Number(a.x) - Number(b.x), Number(a.y) - Number(b.y));
+}
+
+function pointInLiveIgnoreZone(point) {
+  return state.liveIgnoreZones.some((zone) => distanceNorm(point, zone) <= Number(zone.r || LIVE_STATIC_POINT_RADIUS_NORM));
+}
+
+function updateLiveStaticIgnoreZones(result) {
+  const point = liveDetectionBackendPoint(result);
+  if (!point) return false;
+  if (pointInLiveIgnoreZone(point)) return true;
+
+  const candidate = state.liveStaticCandidate;
+  if (!candidate || distanceNorm(point, candidate) > LIVE_STATIC_POINT_MATCH_NORM) {
+    state.liveStaticCandidate = {
+      x: point.x,
+      y: point.y,
+      r: point.r,
+      firstT: point.t,
+      lastT: point.t,
+      count: 1,
+      minY: point.y,
+      maxY: point.y,
+    };
+    return false;
+  }
+
+  candidate.x = (candidate.x * candidate.count + point.x) / (candidate.count + 1);
+  candidate.y = (candidate.y * candidate.count + point.y) / (candidate.count + 1);
+  candidate.r = Math.max(candidate.r, point.r);
+  candidate.count += 1;
+  candidate.lastT = point.t;
+  candidate.minY = Math.min(candidate.minY, point.y);
+  candidate.maxY = Math.max(candidate.maxY, point.y);
+
+  const ySpan = candidate.maxY - candidate.minY;
+  if (candidate.count >= LIVE_STATIC_POINT_LIMIT && ySpan <= LIVE_STATIC_POINT_MATCH_NORM) {
+    state.liveIgnoreZones.push({
+      x: Number(candidate.x.toFixed(5)),
+      y: Number(candidate.y.toFixed(5)),
+      r: Number(Math.max(candidate.r, LIVE_STATIC_POINT_RADIUS_NORM).toFixed(5)),
+    });
+    state.liveIgnoreZones = state.liveIgnoreZones.slice(-LIVE_STATIC_POINT_MAX_ZONES);
+    state.liveStaticCandidate = null;
+    return true;
+  }
+  return false;
 }
 
 function liveDetectionToTrajectoryPoint(result) {

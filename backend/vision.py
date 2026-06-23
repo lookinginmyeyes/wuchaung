@@ -30,6 +30,7 @@ class VideoTrackConfig:
     correction_strength: float = 1.0
     calibration_tick_spacing_m: float | None = None
     axis_calibration_points: tuple[tuple[float, float], ...] | None = None
+    ignore_zones: tuple[tuple[float, float, float], ...] | None = None
 
 
 def build_video_track_config(payload: dict[str, Any]) -> VideoTrackConfig:
@@ -79,6 +80,7 @@ def build_video_track_config(payload: dict[str, Any]) -> VideoTrackConfig:
         correction_strength=float(payload.get("correction_strength", 1.0) or 1.0),
         calibration_tick_spacing_m=_optional_float(payload.get("calibration_tick_spacing_m")),
         axis_calibration_points=_parse_axis_calibration_points(payload.get("axis_calibration_points")),
+        ignore_zones=_parse_ignore_zones(payload.get("ignore_zones")),
     )
 
 
@@ -414,6 +416,7 @@ def detect_ball(frame, config: VideoTrackConfig) -> dict[str, float | str] | Non
     import cv2 as cv  # type: ignore
     import numpy as np  # type: ignore
 
+    frame_h, frame_w = frame.shape[:2]
     gray = cv.cvtColor(frame, cv.COLOR_BGR2GRAY)
     gray = cv.medianBlur(gray, 5)
     enhanced = cv.createCLAHE(clipLimit=2.2, tileGridSize=(8, 8)).apply(gray)
@@ -431,7 +434,17 @@ def detect_ball(frame, config: VideoTrackConfig) -> dict[str, float | str] | Non
                 maxRadius=config.max_radius_px or 0,
             )
             if hough is not None and len(hough[0]) > 0:
-                circle = sorted(hough[0], key=lambda item: item[2], reverse=True)[0]
+                circles = sorted(hough[0], key=lambda item: item[2], reverse=True)
+                circle = next(
+                    (
+                        item for item in circles
+                        if not _is_ignored_detection(float(item[0]), float(item[1]), frame_w, frame_h, config)
+                        and _dark_blob_score(gray, float(item[0]), float(item[1]), float(item[2])) >= 0.26
+                    ),
+                    None,
+                )
+                if circle is None:
+                    continue
                 return {
                     "x": float(circle[0]),
                     "y": float(circle[1]),
@@ -476,6 +489,8 @@ def detect_ball(frame, config: VideoTrackConfig) -> dict[str, float | str] | Non
         (x, y), radius = cv.minEnclosingCircle(contour)
         if radius < min_radius * 0.75:
             continue
+        if _is_ignored_detection(float(x), float(y), frame_w, frame_h, config):
+            continue
         if config.max_radius_px is not None and radius > config.max_radius_px:
             continue
 
@@ -500,6 +515,46 @@ def detect_ball(frame, config: VideoTrackConfig) -> dict[str, float | str] | Non
     _, fill_ratio, area, x, y, radius = sorted(candidates, key=lambda item: item[0], reverse=True)[0]
     confidence = max(0.35, min(0.78, 0.45 + fill_ratio * 0.35))
     return {"x": float(x), "y": float(y), "radius": float(radius), "confidence": confidence, "method": "contour_fallback"}
+
+
+def _is_ignored_detection(x_px: float, y_px: float, width: int, height: int, config: VideoTrackConfig) -> bool:
+    if not config.ignore_zones or width <= 0 or height <= 0:
+        return False
+    x_norm = x_px / width
+    y_norm = y_px / height
+    for zone_x, zone_y, zone_r in config.ignore_zones:
+        if math.hypot(x_norm - zone_x, y_norm - zone_y) <= zone_r:
+            return True
+    return False
+
+
+def _dark_blob_score(gray, x_px: float, y_px: float, radius_px: float) -> float:
+    import cv2 as cv  # type: ignore
+    import numpy as np  # type: ignore
+
+    height, width = gray.shape[:2]
+    radius = max(2.0, float(radius_px))
+    x0 = max(0, int(x_px - radius * 2.2))
+    y0 = max(0, int(y_px - radius * 2.2))
+    x1 = min(width, int(x_px + radius * 2.2) + 1)
+    y1 = min(height, int(y_px + radius * 2.2) + 1)
+    if x1 <= x0 or y1 <= y0:
+        return 0.0
+
+    crop = gray[y0:y1, x0:x1]
+    yy, xx = np.ogrid[y0:y1, x0:x1]
+    dist = np.sqrt((xx - x_px) ** 2 + (yy - y_px) ** 2)
+    inner = dist <= radius * 0.78
+    ring = (dist >= radius * 1.2) & (dist <= radius * 2.0)
+    if not inner.any():
+        return 0.0
+
+    local_reference = float(np.median(crop[ring])) if ring.any() else float(np.median(crop))
+    dark_threshold = local_reference - 8.0
+    dark_fraction = float(np.mean(crop[inner] < dark_threshold))
+    inner_mean = float(np.mean(crop[inner]))
+    contrast = max(0.0, min(1.0, (local_reference - inner_mean) / 38.0))
+    return max(dark_fraction, 0.55 * dark_fraction + 0.45 * contrast)
 
 
 def build_norfair_tracker(config: VideoTrackConfig):
@@ -582,3 +637,27 @@ def _parse_axis_calibration_points(value) -> tuple[tuple[float, float], ...] | N
     if len(points) < 2:
         return None
     return tuple(points)
+
+
+def _parse_ignore_zones(value) -> tuple[tuple[float, float, float], ...] | None:
+    if value in (None, ""):
+        return None
+    try:
+        raw_zones = json.loads(value) if isinstance(value, str) else value
+    except (TypeError, json.JSONDecodeError):
+        return None
+    if not isinstance(raw_zones, list):
+        return None
+
+    zones: list[tuple[float, float, float]] = []
+    for item in raw_zones[:12]:
+        if not isinstance(item, dict):
+            continue
+        x_norm = _optional_float(item.get("x"))
+        y_norm = _optional_float(item.get("y"))
+        radius_norm = _optional_float(item.get("r"))
+        if x_norm is None or y_norm is None or radius_norm is None:
+            continue
+        if 0 <= x_norm <= 1 and 0 <= y_norm <= 1:
+            zones.append((float(x_norm), float(y_norm), max(0.004, min(0.08, float(radius_norm)))))
+    return tuple(zones) if zones else None
