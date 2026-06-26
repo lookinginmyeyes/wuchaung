@@ -34,6 +34,13 @@ class PlatformHandler(BaseHTTPRequestHandler):
         self.send_response(204)
         self.end_headers()
 
+    def do_HEAD(self) -> None:
+        parsed = urlparse(self.path)
+        if parsed.path.startswith("/api/videos/"):
+            self.handle_video_asset(parsed.path, head_only=True)
+            return
+        self.send_error(404, "Not found")
+
     def do_GET(self) -> None:
         parsed = urlparse(self.path)
         if parsed.path == "/api/health":
@@ -237,7 +244,7 @@ class PlatformHandler(BaseHTTPRequestHandler):
         video = attach_run_video(run_id, filename, content_type, size)
         self.send_json({"video": video})
 
-    def handle_video_asset(self, path: str) -> None:
+    def handle_video_asset(self, path: str, head_only: bool = False) -> None:
         filename = Path(unquote(path.rsplit("/", 1)[-1])).name
         target = (VIDEO_DIR / filename).resolve()
         try:
@@ -269,17 +276,21 @@ class PlatformHandler(BaseHTTPRequestHandler):
             self.send_header("Content-Range", f"bytes {start}-{end}/{file_size}")
             self.send_header("Content-Length", str(length))
             self.end_headers()
+            if head_only:
+                return
             with target.open("rb") as file:
                 file.seek(start)
                 self.wfile.write(file.read(length))
             return
 
-        body = target.read_bytes()
         self.send_response(200)
         self.send_header("Content-Type", content_type)
         self.send_header("Accept-Ranges", "bytes")
-        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Content-Length", str(file_size))
         self.end_headers()
+        if head_only:
+            return
+        body = target.read_bytes()
         self.wfile.write(body)
 
     def send_json(self, payload: dict, status: int = 200) -> None:

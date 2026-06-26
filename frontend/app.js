@@ -1146,7 +1146,8 @@ function showRecordedVideo(run) {
   setDataSource("video");
   delete el.videoPreview.dataset.archiveRun;
   el.videoPreview.dataset.archiveRun = String(run.id || "");
-  el.videoPreview.src = video.url;
+  el.videoPreview.crossOrigin = "anonymous";
+  el.videoPreview.src = apiUrl(video.url);
   el.videoPreview.load();
   el.videoPlaceholder.hidden = true;
   el.videoFrame?.classList.add("has-archived-video");
