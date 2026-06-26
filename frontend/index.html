@@ -918,6 +918,25 @@
               </div>
             </div>
             <div id="diagnostics" class="diagnostics"></div>
+            <div id="studentScorePanel" class="student-score-panel" hidden>
+              <div class="student-score-head">
+                <span>人工评分表</span>
+                <strong id="studentScoreValue">--</strong>
+              </div>
+              <div class="student-score-table-wrap">
+                <table class="student-score-table">
+                  <thead>
+                    <tr>
+                      <th>指标</th>
+                      <th>人工值</th>
+                      <th>AI参考值</th>
+                      <th>相对偏差</th>
+                    </tr>
+                  </thead>
+                  <tbody id="studentScoreRows"></tbody>
+                </table>
+              </div>
+            </div>
             <a id="downloadReport" class="report-link disabled" href="#" download>
               <img class="button-art" src="./assets/generated/buttons/export-report.png" alt="" />
               <span>导出本次报告</span>

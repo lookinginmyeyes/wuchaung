@@ -125,6 +125,9 @@ const el = {
   studentV: document.getElementById("studentV"),
   studentEta: document.getElementById("studentEta"),
   scoreReportBtn: document.getElementById("scoreReportBtn"),
+  studentScorePanel: document.getElementById("studentScorePanel"),
+  studentScoreValue: document.getElementById("studentScoreValue"),
+  studentScoreRows: document.getElementById("studentScoreRows"),
   trajectoryInput: document.getElementById("trajectoryInput"),
   uploadTrajectoryBtn: document.getElementById("uploadTrajectoryBtn"),
   sourceStatus: document.getElementById("sourceStatus"),
@@ -736,6 +739,12 @@ function formatPaS(value) {
   if (absolute >= 0.01) return parsed.toFixed(4);
   if (absolute >= 0.0001) return parsed.toFixed(6);
   return parsed.toExponential(2);
+}
+
+function formatMeasurement(value, unit, digits = 6) {
+  const parsed = finiteNumber(value);
+  if (parsed === null) return "未填写";
+  return `${parsed.toFixed(digits)} ${unit}`;
 }
 
 function idealViscosityFromRun(run) {
@@ -3604,8 +3613,49 @@ function renderRun(run) {
     el.downloadReport.classList.add("disabled");
   }
   renderDiagnostics(run.diagnostics);
+  renderStudentScoreTable(run);
   renderUncertainty(run);
   drawChart();
+}
+
+function renderStudentScoreTable(run) {
+  if (!el.studentScorePanel || !el.studentScoreRows) return;
+  const student = run?.student || {};
+  const result = run?.result || {};
+  const hasStudentValues = finiteNumber(student.student_v) !== null || finiteNumber(student.student_eta) !== null;
+  el.studentScorePanel.hidden = !hasStudentValues;
+  if (!hasStudentValues) {
+    el.studentScoreRows.innerHTML = "";
+    if (el.studentScoreValue) el.studentScoreValue.textContent = "--";
+    return;
+  }
+  if (el.studentScoreValue) el.studentScoreValue.textContent = `${formatScore(student.score)} 分`;
+  const rows = [
+    {
+      label: "终端速度 vt",
+      student: formatMeasurement(student.student_v, "m/s"),
+      ai: formatMeasurement(result.terminal_velocity, "m/s"),
+      error: formatPercent(student.v_error),
+    },
+    {
+      label: "粘滞系数 η",
+      student: formatMeasurement(student.student_eta, "Pa·s"),
+      ai: formatMeasurement(result.viscosity, "Pa·s"),
+      error: formatPercent(student.eta_error),
+    },
+  ];
+  el.studentScoreRows.innerHTML = rows
+    .map(
+      (row) => `
+        <tr>
+          <th scope="row">${row.label}</th>
+          <td>${row.student}</td>
+          <td>${row.ai}</td>
+          <td>${row.error}</td>
+        </tr>
+      `,
+    )
+    .join("");
 }
 
 function simulationPayload() {
@@ -4190,8 +4240,7 @@ async function scoreAndGenerateReport() {
     state.latest = updated.run;
     renderRun(updated.run);
     await loadRecords();
-    showToast(`评分完成：${formatScore(updated.run.student?.score)} 分，报告已更新。`);
-    window.setTimeout(() => el.downloadReport?.click(), 120);
+    showToast(`评分完成：${formatScore(updated.run.student?.score)} 分，评分表已更新。`);
   } catch (error) {
     showToast(`评分失败：${error.message}`);
   } finally {
