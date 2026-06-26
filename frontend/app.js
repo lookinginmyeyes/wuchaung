@@ -549,10 +549,10 @@ const unrelatedTopicKeywords = [
 ];
 
 const presets = {
-  "纯甘油 25℃": { rhoLiquid: 1261, etaReference: 0.945, radiusMm: 1.5, rhoBall: 7850, tubeDiameterMm: 35, liquidDepthMm: 220 },
-  "500 cSt 硅油 25℃": { rhoLiquid: 970, etaReference: 0.485, radiusMm: 1.5, rhoBall: 7850, tubeDiameterMm: 35, liquidDepthMm: 210 },
-  "纯甘油 20℃": { rhoLiquid: 1263, etaReference: 1.412, radiusMm: 1.5, rhoBall: 7850, tubeDiameterMm: 35, liquidDepthMm: 220 },
-  "蓖麻油 25℃": { rhoLiquid: 961, etaReference: 0.65, radiusMm: 1.5, rhoBall: 7850, tubeDiameterMm: 35, liquidDepthMm: 220 },
+  "纯甘油 25℃": { rhoLiquid: 1261, etaReference: 0.945, temperatureC: 25 },
+  "500 cSt 硅油 25℃": { rhoLiquid: 970, etaReference: 0.485, temperatureC: 25 },
+  "纯甘油 20℃": { rhoLiquid: 1263, etaReference: 1.412, temperatureC: 20 },
+  "蓖麻油 25℃": { rhoLiquid: 961, etaReference: 0.65, temperatureC: 25 },
 };
 
 // Standard table values at the listed temperature. Viscosity is strongly temperature-dependent.
@@ -794,6 +794,36 @@ function formatUniformSegmentLength(span) {
   const distanceMm = distanceM * 1000;
   if (distanceMm >= 100) return `${(distanceMm / 10).toFixed(1)} cm`;
   return `${distanceMm.toFixed(1)} mm`;
+}
+
+function setInputValue(input, value) {
+  if (!input) return;
+  const parsed = finiteNumber(value);
+  input.value = parsed === null ? "" : String(parsed);
+}
+
+function ensureLiquidOption(value) {
+  if (!value || !el.liquid) return;
+  const exists = [...el.liquid.options].some((option) => option.value === value);
+  if (!exists) {
+    const option = document.createElement("option");
+    option.value = value;
+    option.textContent = value;
+    el.liquid.appendChild(option);
+  }
+}
+
+function fillExperimentInputsFromRun(run) {
+  const params = run?.params || {};
+  ensureLiquidOption(params.liquid);
+  if (el.liquid) el.liquid.value = params.liquid || "";
+  setInputValue(el.temperatureC, params.temperature_c);
+  setInputValue(el.rhoLiquid, params.rho_liquid);
+  setInputValue(el.etaReference, params.eta_reference);
+  setInputValue(el.radiusMm, params.radius_mm);
+  setInputValue(el.rhoBall, params.rho_ball);
+  setInputValue(el.tubeDiameterMm, params.tube_diameter_mm);
+  setInputValue(el.liquidDepthMm, params.liquid_depth_mm);
 }
 
 function payload() {
@@ -3546,6 +3576,7 @@ function renderRun(run) {
   const quality = run.quality || {};
   const preprocessing = quality.preprocessing || {};
   const idealEta = idealViscosityFromRun(run);
+  fillExperimentInputsFromRun(run);
   if (el.studentV) el.studentV.value = finiteNumber(student.student_v) === null ? "" : String(student.student_v);
   if (el.studentEta) el.studentEta.value = finiteNumber(student.student_eta) === null ? "" : String(student.student_eta);
   el.terminalVelocity.textContent = `${result.terminal_velocity.toFixed(4)} m/s`;
@@ -4432,13 +4463,9 @@ function moduleIndex(tier, title) {
 function applyPreset(name) {
   const preset = presets[name];
   if (!preset) return;
-  el.temperatureC.value = name.includes("20℃") ? 20 : 25;
+  el.temperatureC.value = preset.temperatureC;
   el.rhoLiquid.value = preset.rhoLiquid;
   el.etaReference.value = preset.etaReference;
-  el.radiusMm.value = preset.radiusMm;
-  el.rhoBall.value = preset.rhoBall;
-  el.tubeDiameterMm.value = preset.tubeDiameterMm;
-  el.liquidDepthMm.value = preset.liquidDepthMm;
 }
 
 function clearExperimentInputs() {
