@@ -124,6 +124,7 @@ const el = {
   liquidDepthMm: document.getElementById("liquidDepthMm"),
   studentV: document.getElementById("studentV"),
   studentEta: document.getElementById("studentEta"),
+  scoreReportBtn: document.getElementById("scoreReportBtn"),
   trajectoryInput: document.getElementById("trajectoryInput"),
   uploadTrajectoryBtn: document.getElementById("uploadTrajectoryBtn"),
   sourceStatus: document.getElementById("sourceStatus"),
@@ -551,6 +552,7 @@ const presets = {
   "纯甘油 25℃": { rhoLiquid: 1261, etaReference: 0.945, radiusMm: 1.5, rhoBall: 7850, tubeDiameterMm: 35, liquidDepthMm: 220 },
   "500 cSt 硅油 25℃": { rhoLiquid: 970, etaReference: 0.485, radiusMm: 1.5, rhoBall: 7850, tubeDiameterMm: 35, liquidDepthMm: 210 },
   "纯甘油 20℃": { rhoLiquid: 1263, etaReference: 1.412, radiusMm: 1.5, rhoBall: 7850, tubeDiameterMm: 35, liquidDepthMm: 220 },
+  "蓖麻油 25℃": { rhoLiquid: 961, etaReference: 0.65, radiusMm: 1.5, rhoBall: 7850, tubeDiameterMm: 35, liquidDepthMm: 220 },
 };
 
 // Standard table values at the listed temperature. Viscosity is strongly temperature-dependent.
@@ -815,6 +817,31 @@ function payload() {
   };
 }
 
+function validateExperimentInputs({ requireReference = false } = {}) {
+  const checks = [
+    [el.liquid.value.trim(), "样本液体"],
+    [number(el.rhoLiquid), "液体密度"],
+    [number(el.radiusMm), "小球半径"],
+    [number(el.tubeDiameterMm), "量筒内径"],
+    [number(el.liquidDepthMm), "液体深度"],
+    [number(el.rhoBall), "小球密度"],
+    [number(el.temperatureC), "温度"],
+  ];
+  if (requireReference) checks.push([number(el.etaReference), "参考粘度"]);
+  const missing = checks
+    .filter(([value]) => value === "" || value === null || !Number.isFinite(Number(value)) || Number(value) <= 0)
+    .map(([, label]) => label);
+  if (missing.length) {
+    showToast(`请先填写：${missing.join("、")}`);
+    return false;
+  }
+  if (number(el.rhoBall) <= number(el.rhoLiquid)) {
+    showToast("小球密度必须大于液体密度，否则不能做落球法计算。");
+    return false;
+  }
+  return true;
+}
+
 function apiUrl(path) {
   if (/^https?:\/\//i.test(path)) return path;
   return `${API_BASE_URL}${path}`;
@@ -903,6 +930,7 @@ async function checkHealth() {
 }
 
 async function uploadTrajectory() {
+  if (!validateExperimentInputs()) return;
   if (state.source === "realtime") {
     describeRealtimeTracking();
     return;
@@ -1891,6 +1919,7 @@ function stopLiveCamera(options = {}) {
 }
 
 async function startLiveRecording() {
+  if (!validateExperimentInputs()) return;
   if (!state.liveStream) {
     showToast("请先连接实时画面。");
     return;
@@ -2707,6 +2736,7 @@ function renderLiveTrackingPreview() {
     ? `${Math.round((state.liveTrajectory.reduce((sum, point) => sum + point.confidence, 0) / state.liveTrajectory.length) * 100)}%`
     : "--";
   el.score.textContent = "--";
+  if (el.scoreReportBtn) el.scoreReportBtn.disabled = true;
   el.runBadge.textContent = `实时追踪 ${state.liveTrajectory.length} 点`;
   el.downloadReport.href = "#";
   el.downloadReport.classList.add("disabled");
@@ -3075,6 +3105,7 @@ function renderEmptyState() {
   el.segmentCv.textContent = "--";
   el.trackingConfidence.textContent = "--";
   el.score.textContent = "--";
+  if (el.scoreReportBtn) el.scoreReportBtn.disabled = true;
   el.runBadge.textContent = "等待数据";
   el.downloadReport.href = "#";
   el.downloadReport.classList.add("disabled");
@@ -3515,6 +3546,8 @@ function renderRun(run) {
   const quality = run.quality || {};
   const preprocessing = quality.preprocessing || {};
   const idealEta = idealViscosityFromRun(run);
+  if (el.studentV) el.studentV.value = finiteNumber(student.student_v) === null ? "" : String(student.student_v);
+  if (el.studentEta) el.studentEta.value = finiteNumber(student.student_eta) === null ? "" : String(student.student_eta);
   el.terminalVelocity.textContent = `${result.terminal_velocity.toFixed(4)} m/s`;
   el.uniformSegmentLength.textContent = formatUniformSegmentLength(estimateUniformSegmentSpan(run, result.terminal_velocity));
   el.idealViscosity.textContent = idealEta === null ? "--" : `${formatPaS(idealEta)} Pa·s`;
@@ -3530,6 +3563,7 @@ function renderRun(run) {
     ? `${Math.round(Number(result.tracking_confidence) * 100)}%`
     : "--";
   el.score.textContent = formatScore(student.score);
+  if (el.scoreReportBtn) el.scoreReportBtn.disabled = !run.id;
   el.runBadge.textContent = run.id ? `记录 #${run.id}` : "仿真对照";
   if (run.id) {
     el.downloadReport.href = apiUrl(`/api/runs/${run.id}/report`);
@@ -4104,6 +4138,36 @@ async function loadRun(id) {
   }
 }
 
+async function scoreAndGenerateReport() {
+  const run = state.latest;
+  if (!run?.id) {
+    showToast("请先载入或完成一条实验记录。");
+    return;
+  }
+  const studentV = number(el.studentV);
+  const studentEta = number(el.studentEta);
+  if (!Number.isFinite(studentV) || !Number.isFinite(studentEta) || studentV <= 0 || studentEta <= 0) {
+    showToast("请先输入有效的人工终端速度和人工粘滞系数。");
+    return;
+  }
+  setButtonLoading(el.scoreReportBtn, true, "评分中");
+  try {
+    const updated = await api(`/api/runs/${run.id}/student`, {
+      method: "POST",
+      body: JSON.stringify({ student_v: studentV, student_eta: studentEta }),
+    });
+    state.latest = updated.run;
+    renderRun(updated.run);
+    await loadRecords();
+    showToast(`评分完成：${formatScore(updated.run.student?.score)} 分，报告已更新。`);
+    window.setTimeout(() => el.downloadReport?.click(), 120);
+  } catch (error) {
+    showToast(`评分失败：${error.message}`);
+  } finally {
+    setButtonLoading(el.scoreReportBtn, false);
+  }
+}
+
 function clearLatestRecordIfDeleted(ids) {
   if (!state.latest?.id) return;
   const deleted = ids.map((id) => String(id));
@@ -4368,12 +4432,20 @@ function moduleIndex(tier, title) {
 function applyPreset(name) {
   const preset = presets[name];
   if (!preset) return;
+  el.temperatureC.value = name.includes("20℃") ? 20 : 25;
   el.rhoLiquid.value = preset.rhoLiquid;
   el.etaReference.value = preset.etaReference;
   el.radiusMm.value = preset.radiusMm;
   el.rhoBall.value = preset.rhoBall;
   el.tubeDiameterMm.value = preset.tubeDiameterMm;
   el.liquidDepthMm.value = preset.liquidDepthMm;
+}
+
+function clearExperimentInputs() {
+  [el.rhoLiquid, el.etaReference, el.radiusMm, el.rhoBall, el.tubeDiameterMm, el.liquidDepthMm, el.temperatureC].forEach((input) => {
+    if (input) input.value = "";
+  });
+  if (el.liquid) el.liquid.value = "";
 }
 
 function showToast(text) {
@@ -4428,10 +4500,10 @@ function bind() {
     toggleAllRecords(el.selectAllRecords.checked);
   });
   el.deleteSelectedRecordsBtn?.addEventListener("click", deleteSelectedRecords);
+  el.scoreReportBtn?.addEventListener("click", scoreAndGenerateReport);
   el.presetBtn.addEventListener("click", () => {
-    el.liquid.value = "纯甘油 25℃";
-    applyPreset("纯甘油 25℃");
-    showToast("已恢复默认样本与仪器参数。");
+    clearExperimentInputs();
+    showToast("已清空样本与仪器参数，请重新选择或填写。");
   });
   el.liquid.addEventListener("change", () => applyPreset(el.liquid.value));
   el.trajectoryInput.addEventListener("change", updateSelectedFile);

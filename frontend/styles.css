@@ -2748,6 +2748,11 @@ select {
   gap: 12px;
 }
 
+.workspace .parameter-panel .student-box .primary-button {
+  grid-column: 2;
+  min-height: 46px;
+}
+
 .workspace .parameter-panel .student-box label span {
   color: #52645d;
   font-size: 13px;

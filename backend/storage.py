@@ -236,6 +236,31 @@ def get_run(run_id: int) -> dict | None:
     return payload
 
 
+def update_run_payload(run_id: int, payload: dict) -> dict | None:
+    score = (payload.get("student") or {}).get("score")
+    if use_supabase():
+        query = urlencode({"id": f"eq.{int(run_id)}"})
+        supabase_request(
+            "PATCH",
+            f"{SUPABASE_TABLE}?{query}",
+            {"payload": payload, "score": score},
+            headers={"Prefer": "return=minimal"},
+        )
+        payload["id"] = int(run_id)
+        return payload
+    with connect() as conn:
+        row = conn.execute("SELECT id FROM runs WHERE id = ?", (run_id,)).fetchone()
+        if not row:
+            return None
+        conn.execute(
+            "UPDATE runs SET payload = ?, score = ? WHERE id = ?",
+            (json.dumps(payload, ensure_ascii=False), score, run_id),
+        )
+        conn.commit()
+    payload["id"] = int(run_id)
+    return payload
+
+
 def delete_run(run_id: int) -> bool:
     if use_supabase():
         return supabase_delete_run(run_id)
@@ -416,43 +441,72 @@ def build_report_text(run: dict) -> str:
     quality = run.get("quality", {})
     preprocessing = quality.get("preprocessing", {})
     lines = [
-        "基于AI视觉的落球法液体粘滞系数智能测量系统",
-        "实验运行报告",
+        "# 基于AI视觉的落球法液体粘滞系数智能测量系统实验报告",
         "",
-        f"记录ID: {run.get('id', '-')}",
-        f"样本液体: {params['liquid']}",
-        f"液体密度: {params['rho_liquid']} kg/m^3",
-        f"小球半径: {params['radius_mm']} mm",
-        f"小球密度: {params['rho_ball']} kg/m^3",
-        f"量筒内径: {params['tube_diameter_mm']} mm",
-        f"温度: {params['temperature_c']} ℃",
+        "## 基本信息",
+        "| 项目 | 数值 |",
+        "|---|---:|",
+        f"| 记录ID | {run.get('id', '-')} |",
+        f"| 样本液体 | {params['liquid']} |",
+        f"| 温度 | {params['temperature_c']} ℃ |",
+        f"| 液体密度 | {params['rho_liquid']} kg/m^3 |",
+        f"| 小球半径 | {params['radius_mm']} mm |",
+        f"| 小球密度 | {params['rho_ball']} kg/m^3 |",
+        f"| 量筒内径 | {params['tube_diameter_mm']} mm |",
+        f"| 液体深度 | {params.get('liquid_depth_mm', '-')} mm |",
         "",
-        "AI辅助参考结果",
-        f"终端速度 vt: {result['terminal_velocity']:.6f} m/s",
-        f"理想公式粘滞系数 η_ideal: {result.get('ideal_viscosity', result['viscosity']):.6f} Pa·s",
-        f"粘滞系数 η: {result['viscosity']:.6f} Pa·s",
-        f"线性拟合 R²: {result['r2']:.4f}",
-        f"Re: {result['re']:.4f}",
-        f"壁效应修正因子: {result['wall_correction']:.4f}",
-        f"追踪平均置信度: {result['tracking_confidence'] * 100:.1f}%",
-        f"相对不确定度估计: {result['relative_uncertainty'] * 100:.2f}%",
-        f"拟合方法: {quality.get('fit_method', 'linear_fit')}",
-        f"匀速段速度离散度: {float(quality.get('uniform_segment_cv', 0)):.4f}",
-        f"降权坏点数: {int(preprocessing.get('outlier_points', 0) or 0)}",
-        f"无效轨迹点数: {int(preprocessing.get('dropped_points', 0) or 0)}",
+        "## AI参考结果",
+        "| 指标 | 数值 |",
+        "|---|---:|",
+        f"| 终端速度 vt | {result['terminal_velocity']:.6f} m/s |",
+        f"| 理想公式粘滞系数 η_ideal | {result.get('ideal_viscosity', result['viscosity']):.6f} Pa·s |",
+        f"| 修正粘滞系数 η | {result['viscosity']:.6f} Pa·s |",
+        f"| 线性拟合 R² | {result['r2']:.4f} |",
+        f"| Re | {result['re']:.4f} |",
+        f"| 壁效应修正因子 | {result['wall_correction']:.4f} |",
+        f"| 追踪平均置信度 | {result['tracking_confidence'] * 100:.1f}% |",
+        f"| 相对不确定度估计 | {result['relative_uncertainty'] * 100:.2f}% |",
+        f"| 拟合方法 | {quality.get('fit_method', 'linear_fit')} |",
+        f"| 匀速段速度离散度 | {float(quality.get('uniform_segment_cv', 0)):.4f} |",
+        f"| 降权坏点数 | {int(preprocessing.get('outlier_points', 0) or 0)} |",
+        f"| 无效轨迹点数 | {int(preprocessing.get('dropped_points', 0) or 0)} |",
         "",
-        "人工测量值对比",
-        format_optional("人工终端速度", student.get("student_v"), "m/s", 6),
-        format_optional("人工粘滞系数", student.get("student_eta"), "Pa·s", 6),
-        format_optional("质量评分", student.get("score"), "", 0),
+        "## 人工测量值对比",
+        "| 指标 | 人工值 | AI参考值 | 相对偏差 |",
+        "|---|---:|---:|---:|",
+        report_compare_row("终端速度 vt", student.get("student_v"), result["terminal_velocity"], "m/s", student.get("v_error")),
+        report_compare_row("粘滞系数 η", student.get("student_eta"), result["viscosity"], "Pa·s", student.get("eta_error")),
+        f"| 质量评分 | {format_report_value(student.get('score'), '', 0)} | - | - |",
         "",
-        "分层异常诊断",
+        "## 分层异常诊断",
+        "| 等级 | 诊断项 | 建议 |",
+        "|---|---|---|",
     ]
     for item in diagnostics:
-        lines.append(f"- [{item['level']}] {item['title']}: {item['message']}")
+        lines.append(f"| {item['level']} | {item['title']} | {item['message']} |")
     lines.append("")
     lines.append("说明: 当前报告用于辅助复盘和软件链路验证，不替代学生实验操作、原始记录、误差分析和物理结论；真实物理精度需要接入固定机位、标定板、透明容器和实际落球视频后验证。")
     return "\n".join(lines)
+
+
+def report_compare_row(label: str, student_value, ai_value, unit: str, relative_error) -> str:
+    return (
+        f"| {label} | {format_report_value(student_value, unit, 6)} | "
+        f"{format_report_value(ai_value, unit, 6)} | {format_percent(relative_error)} |"
+    )
+
+
+def format_report_value(value, unit: str = "", digits: int = 3) -> str:
+    if value is None:
+        return "未填写"
+    suffix = f" {unit}" if unit else ""
+    return f"{float(value):.{digits}f}{suffix}"
+
+
+def format_percent(value) -> str:
+    if value is None:
+        return "未填写"
+    return f"{float(value) * 100:.2f}%"
 
 
 def format_optional(label: str, value, unit: str = "", digits: int = 3) -> str:

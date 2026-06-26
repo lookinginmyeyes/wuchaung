@@ -264,38 +264,40 @@
               <label>
                 <span>样本液体</span>
                 <select id="liquid">
+                  <option value="">请选择样本液体</option>
                   <option value="纯甘油 25℃">纯甘油 25℃</option>
                   <option value="500 cSt 硅油 25℃">500 cSt 硅油 25℃</option>
                   <option value="纯甘油 20℃">纯甘油 20℃</option>
+                  <option value="蓖麻油 25℃">蓖麻油 25℃</option>
                 </select>
               </label>
               <label>
                 <span>温度 ℃</span>
-                <input id="temperatureC" type="number" value="25" step="0.1" />
+                <input id="temperatureC" type="number" step="0.1" />
               </label>
               <label>
                 <span>液体密度 kg/m³</span>
-                <input id="rhoLiquid" type="number" value="1261" step="1" />
+                <input id="rhoLiquid" type="number" step="1" />
               </label>
               <label>
                 <span>参考粘度 Pa·s</span>
-                <input id="etaReference" type="number" value="0.945" step="0.001" />
+                <input id="etaReference" type="number" step="0.001" />
               </label>
               <label>
                 <span>小球半径 mm</span>
-                <input id="radiusMm" type="number" value="1.5" step="0.1" />
+                <input id="radiusMm" type="number" step="0.1" />
               </label>
               <label>
                 <span>小球密度 kg/m³</span>
-                <input id="rhoBall" type="number" value="7850" step="10" />
+                <input id="rhoBall" type="number" step="10" />
               </label>
               <label>
                 <span>量筒内径 mm</span>
-                <input id="tubeDiameterMm" type="number" value="35" step="1" />
+                <input id="tubeDiameterMm" type="number" step="1" />
               </label>
               <label>
                 <span>液体深度 mm</span>
-                <input id="liquidDepthMm" type="number" value="220" step="5" />
+                <input id="liquidDepthMm" type="number" step="5" />
               </label>
             </div>
 
@@ -304,13 +306,17 @@
               <div class="form-grid two">
                 <label>
                   <span>终端速度 m/s</span>
-                  <input id="studentV" type="number" step="0.0001" placeholder="可选" />
+                  <input id="studentV" type="number" step="0.0001" placeholder="输入人工测得 vt" />
                 </label>
                 <label>
                   <span>粘滞系数 Pa·s</span>
-                  <input id="studentEta" type="number" step="0.001" placeholder="可选" />
+                  <input id="studentEta" type="number" step="0.001" placeholder="输入人工算得 η" />
                 </label>
               </div>
+              <button id="scoreReportBtn" class="primary-button full" type="button" disabled>
+                <img class="button-art" src="./assets/generated/buttons/export-report.png" alt="" />
+                <span>评分并生成报告</span>
+              </button>
             </div>
           </section>
 

@@ -8,13 +8,13 @@ from urllib.parse import parse_qs, unquote, urlparse
 
 try:
     from .modules import module_summary, readiness_summary
-    from .physics import analyze_trajectory, answer_question, build_params, build_simulation, inspect_video_metadata
-    from .storage import VIDEO_DIR, attach_run_video, build_report_text, delete_run, delete_runs, get_run, init_db, latest_run, list_runs, save_run, storage_status
+    from .physics import analyze_trajectory, answer_question, build_diagnostics, build_params, build_simulation, inspect_video_metadata, to_optional_float
+    from .storage import VIDEO_DIR, attach_run_video, build_report_text, delete_run, delete_runs, get_run, init_db, latest_run, list_runs, save_run, storage_status, update_run_payload
     from .vision import build_video_track_config, detect_ball_from_image_bytes, extract_trajectory_from_video_bytes, inspect_vision_runtime
 except ImportError:
     from modules import module_summary, readiness_summary
-    from physics import analyze_trajectory, answer_question, build_params, build_simulation, inspect_video_metadata
-    from storage import VIDEO_DIR, attach_run_video, build_report_text, delete_run, delete_runs, get_run, init_db, latest_run, list_runs, save_run, storage_status
+    from physics import analyze_trajectory, answer_question, build_diagnostics, build_params, build_simulation, inspect_video_metadata, to_optional_float
+    from storage import VIDEO_DIR, attach_run_video, build_report_text, delete_run, delete_runs, get_run, init_db, latest_run, list_runs, save_run, storage_status, update_run_payload
     from vision import build_video_track_config, detect_ball_from_image_bytes, extract_trajectory_from_video_bytes, inspect_vision_runtime
 
 
@@ -66,7 +66,7 @@ class PlatformHandler(BaseHTTPRequestHandler):
             if not run:
                 self.send_error(404, "Run not found")
                 return
-            self.send_text(build_report_text(run), filename=f"run-{run_id}-report.txt")
+            self.send_text(build_report_text(run), filename=f"run-{run_id}-report.md")
             return
         if parsed.path.startswith("/api/runs/"):
             run_id = int(parsed.path.rsplit("/", 1)[-1])
@@ -138,6 +138,9 @@ class PlatformHandler(BaseHTTPRequestHandler):
             return
         if parsed.path.startswith("/api/runs/") and parsed.path.endswith("/video"):
             self.handle_run_video_upload(parsed.path)
+            return
+        if parsed.path.startswith("/api/runs/") and parsed.path.endswith("/student"):
+            self.handle_run_student_update(parsed.path)
             return
         self.send_error(404, "Not found")
 
@@ -213,6 +216,52 @@ class PlatformHandler(BaseHTTPRequestHandler):
             self.send_json({"error": str(error), "runtime": inspect_vision_runtime()}, status=400)
             return
         self.send_json(result)
+
+    def handle_run_student_update(self, path: str) -> None:
+        try:
+            run_id = int(path.split("/")[-2])
+        except (IndexError, ValueError):
+            self.send_json({"error": "记录ID无效"}, status=400)
+            return
+        run = get_run(run_id)
+        if not run:
+            self.send_json({"error": "记录不存在"}, status=404)
+            return
+
+        payload = self.read_json()
+        student_v = to_optional_float(payload.get("student_v"))
+        student_eta = to_optional_float(payload.get("student_eta"))
+        if student_v is None or student_eta is None or student_v <= 0 or student_eta <= 0:
+            self.send_json({"error": "请提交有效的人工终端速度和人工粘滞系数。"}, status=400)
+            return
+
+        result = run.get("result") or {}
+        params = build_params(run.get("params") or {})
+        terminal_velocity = float(result.get("terminal_velocity") or 0)
+        viscosity = float(result.get("viscosity") or 0)
+        r2 = float(result.get("r2") or 0)
+        re = float(result.get("re") or 0)
+        if terminal_velocity <= 0 or viscosity <= 0:
+            self.send_json({"error": "当前记录缺少AI参考结果，无法评分。"}, status=400)
+            return
+
+        v_error = abs(student_v - terminal_velocity) / terminal_velocity
+        eta_error = abs(student_eta - viscosity) / viscosity
+        score = max(48.0, min(98.0, 100 - eta_error * 260 - v_error * 160 - (1 - r2) * 85))
+        tube_ratio = (2 * params.radius_mm) / params.tube_diameter_mm
+        run["student"] = {
+            "student_v": student_v,
+            "student_eta": student_eta,
+            "v_error": v_error,
+            "eta_error": eta_error,
+            "score": score,
+        }
+        run["diagnostics"] = build_diagnostics(params, r2, re, tube_ratio, score, v_error, eta_error, run.get("quality") or {})
+        updated = update_run_payload(run_id, run)
+        if not updated:
+            self.send_json({"error": "记录保存失败"}, status=500)
+            return
+        self.send_json({"run": updated})
 
     def handle_run_video_upload(self, path: str) -> None:
         try:
