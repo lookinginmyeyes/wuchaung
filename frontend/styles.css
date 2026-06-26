@@ -2084,8 +2084,7 @@ body.calibration-fullscreen-active {
 
 .live-control-panel,
 .calibration-rod-card,
-.nonlinear-correction-card,
-.live-readiness {
+.nonlinear-correction-card {
   border-radius: 15px;
   border: 1px solid rgba(217, 221, 213, 0.9);
   background: rgba(255, 255, 255, 0.76);
@@ -2116,8 +2115,7 @@ body.calibration-fullscreen-active {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
-.live-status-grid article,
-.live-pipeline article {
+.live-status-grid article {
   border-radius: 13px;
   border: 1px solid rgba(217, 221, 213, 0.9);
   background: linear-gradient(180deg, #fff, rgba(247, 250, 247, 0.86));
@@ -2130,9 +2128,7 @@ body.calibration-fullscreen-active {
 
 .live-status-grid span,
 .calibration-rod-card span,
-.nonlinear-correction-card span,
-.live-pipeline span,
-.live-readiness span {
+.nonlinear-correction-card span {
   display: block;
   color: var(--accent);
   font-size: 12px;
@@ -2166,17 +2162,6 @@ body.calibration-fullscreen-active {
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.82), rgba(247, 250, 247, 0.72)),
     linear-gradient(90deg, rgba(50, 122, 102, 0.05), transparent);
-}
-
-.live-action-title {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 18px;
-  color: var(--accent-dark);
-  font-size: 12px;
-  font-weight: 940;
-  line-height: 1.2;
 }
 
 .camera-picker {
@@ -2392,8 +2377,7 @@ body.calibration-fullscreen-active {
 }
 
 .rod-form-grid,
-.nonlinear-form-grid,
-.nonlinear-guide {
+.nonlinear-form-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 10px;
@@ -2424,10 +2408,6 @@ body.calibration-fullscreen-active {
   gap: 10px;
   flex-wrap: wrap;
   justify-content: flex-end;
-}
-
-.nonlinear-guide {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .correction-mode-switch {
@@ -2465,25 +2445,6 @@ body.calibration-fullscreen-active {
 
 .correction-mode-switch button:active {
   transform: translateY(1px);
-}
-
-.nonlinear-guide article {
-  min-height: 96px;
-  padding: 13px;
-  border-radius: 13px;
-  background:
-    linear-gradient(135deg, rgba(255, 255, 255, 0.88), rgba(239, 246, 243, 0.78)),
-    linear-gradient(90deg, rgba(50, 122, 102, 0.08), transparent);
-  border: 1px solid rgba(217, 221, 213, 0.95);
-}
-
-.nonlinear-guide strong {
-  font-size: 16px;
-  line-height: 1.25;
-}
-
-.nonlinear-guide p {
-  font-size: 12px;
 }
 
 .switch-row {
@@ -2532,65 +2493,15 @@ body.calibration-fullscreen-active {
   font-size: 15px;
 }
 
-.live-pipeline {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
-}
-
-.live-pipeline article {
-  position: relative;
-  min-height: 106px;
-  padding: 13px;
-  overflow: hidden;
-}
-
-.live-pipeline article::after {
-  content: "";
-  position: absolute;
-  right: -18px;
-  bottom: -28px;
-  width: 76px;
-  height: 76px;
-  border-radius: 50%;
-  background: rgba(50, 122, 102, 0.08);
-}
-
-.live-pipeline strong {
-  display: block;
-  margin-top: 8px;
-  color: var(--ink);
-  font-size: 15px;
-  line-height: 1.15;
-}
-
-.live-pipeline p {
-  position: relative;
-  z-index: 1;
-  margin: 7px 0 0;
-  color: var(--muted);
-  font-size: 12px;
-  font-weight: 740;
-  line-height: 1.5;
-}
-
-.live-readiness {
-  padding: 13px 15px;
-}
-
-.live-readiness p {
-  margin: 5px 0 0;
-  color: var(--muted);
-  font-size: 13px;
-  font-weight: 760;
-  line-height: 1.55;
-}
-
 .import-actions {
   display: grid;
   grid-template-columns: 1fr;
   gap: 10px;
   margin-top: 14px;
+}
+
+body[data-source="realtime"] .import-actions {
+  display: none;
 }
 
 .import-actions .primary-button,
@@ -5934,9 +5845,7 @@ td button {
   .form-grid,
   .rod-form-grid,
   .nonlinear-form-grid,
-  .nonlinear-guide,
   .nonlinear-status-strip,
-  .live-pipeline,
   .metric-grid,
   .algorithm-strip,
   .source-tabs,
@@ -6124,10 +6033,6 @@ td button {
 
   .live-status-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-
-  .live-pipeline {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   #chart {
@@ -6954,7 +6859,6 @@ svg {
   .fall-offset-form,
   .calibration-result-strip,
   .nonlinear-status-strip,
-  .live-pipeline,
   .video-meta-grid,
   .readiness-cards,
   .detail-grid,
@@ -6973,10 +6877,6 @@ svg {
 
   .rod-form-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .nonlinear-guide {
-    grid-template-columns: 1fr;
   }
 
   .nonlinear-toggle-row {
@@ -7095,7 +6995,6 @@ svg {
   .rod-form-grid,
   .calibration-result-strip,
   .nonlinear-status-strip,
-  .live-pipeline,
   .video-meta-grid {
     grid-template-columns: 1fr;
   }

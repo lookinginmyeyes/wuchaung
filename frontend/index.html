@@ -403,8 +403,8 @@
                     </button>
                     <div id="livePlaceholder" class="live-placeholder">
                       <span class="tracking-orbit" aria-hidden="true"></span>
-                      <strong>等待手机实时画面</strong>
-                      <small>支持浏览器摄像头、手机投屏采集卡或 RTSP/NDI 转 WebRTC 服务接入</small>
+                      <strong>等待画面</strong>
+                      <small>连接摄像头后显示预览</small>
                     </div>
                     <button id="calibrationClickLayer" class="calibration-click-layer" type="button" aria-label="按顺序点击标定棒刻度点" disabled>
                       <span id="calibrationPointsLayer" class="calibration-points-layer"></span>
@@ -494,7 +494,6 @@
                     </div>
                     <div class="live-actions">
                       <div class="live-action-group">
-                        <span class="live-action-title">画面接入</span>
                         <button id="startLiveCameraBtn" class="primary-button" type="button">
                           <img class="button-art" src="./assets/generated/buttons/run-analysis.png" alt="" />
                           <span>连接实时画面</span>
@@ -505,7 +504,6 @@
                         </button>
                       </div>
                       <div class="live-action-group">
-                        <span class="live-action-title">标定操作</span>
                         <button id="startCalibrationBtn" class="ghost-button" type="button" disabled>
                           <img class="button-art" src="./assets/generated/buttons/quick-refraction.png" alt="" />
                           <span>开始标定</span>
@@ -516,7 +514,6 @@
                         </button>
                       </div>
                       <div class="live-action-group">
-                        <span class="live-action-title">检测区域</span>
                         <button id="startRoiSelectBtn" class="ghost-button roi-select-button" type="button" disabled>
                           <img class="button-art" src="./assets/generated/buttons/quick-boundary.png" alt="" />
                           <span>框选检测区域</span>
@@ -527,7 +524,6 @@
                         </button>
                       </div>
                       <div class="live-action-group">
-                        <span class="live-action-title">追踪计算</span>
                         <button id="startLiveRecordBtn" class="primary-button secondary-live-action" type="button" disabled>
                           <img class="button-art" src="./assets/generated/buttons/velocity-curve.png" alt="" />
                           <span>开始实时追踪</span>
@@ -601,18 +597,6 @@
                       </button>
                     </div>
                   </div>
-                  <div class="nonlinear-guide">
-                    <article>
-                      <span>点击顺序</span>
-                      <strong>0 → 50 → 100 → ... → 300 mm</strong>
-                      <p>从标定棒上端开始，依次点击每个已知刻度。</p>
-                    </article>
-                    <article>
-                      <span>拟合方式</span>
-                      <strong id="correctionModeTitle">分段非线性插值</strong>
-                      <p id="correctionModeDetail">相邻刻度之间线性插值，局部误差不会扩散到整条标定棒。</p>
-                    </article>
-                  </div>
                   <div class="nonlinear-status-strip">
                     <article>
                       <span>修正模型</span>
@@ -629,33 +613,6 @@
                   </div>
                 </div>
 
-                <div class="live-pipeline">
-                  <article>
-                    <span>01</span>
-                    <strong>手机实时画面</strong>
-                    <p>手机通过同一局域网推流，或 USB/采集卡作为系统摄像头被浏览器读取。</p>
-                  </article>
-                  <article>
-                    <span>02</span>
-                    <strong>标定棒建模</strong>
-                    <p>点选中心标定棒刻度，生成像素到真实高度的非线性映射。</p>
-                  </article>
-                  <article>
-                    <span>03</span>
-                    <strong>小球视觉追踪</strong>
-                    <p>浏览器逐帧提交画面，后端 OpenCV 即时返回小球中心坐标。</p>
-                  </article>
-                  <article>
-                    <span>04</span>
-                    <strong>实时轨迹输出</strong>
-                    <p>边下落边生成 t、x、y、confidence 轨迹流，停止后自动拟合终端速度与粘度。</p>
-                  </article>
-                </div>
-
-                <div class="live-readiness">
-                  <span id="liveReadinessLabel">方案可实现</span>
-                  <p id="liveReadinessDetail">当前网页支持实时画面预览、逐帧提交后端 OpenCV 识别、边追踪边绘制曲线；停止后自动进入粘度计算。</p>
-                </div>
               </div>
             </div>
 
