@@ -2149,18 +2149,19 @@ body.calibration-fullscreen-active {
 
 .live-actions {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
   align-self: end;
+  min-width: 0;
 }
 
 .live-action-group {
   display: grid;
   grid-auto-rows: auto;
-  gap: 7px;
+  gap: 6px;
   min-width: 0;
-  padding: 8px;
-  border-radius: 14px;
+  padding: 7px;
+  border-radius: 12px;
   border: 1px solid rgba(217, 221, 213, 0.92);
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.82), rgba(247, 250, 247, 0.72)),
@@ -2171,7 +2172,7 @@ body.calibration-fullscreen-active {
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: 22px;
+  min-height: 18px;
   color: var(--accent-dark);
   font-size: 12px;
   font-weight: 940;
@@ -2300,20 +2301,20 @@ body.calibration-fullscreen-active {
 }
 
 .realtime-import-panel.calibration-focus .live-actions {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   align-self: stretch;
 }
 
 .live-actions .primary-button,
 .live-actions .ghost-button {
   display: grid;
-  grid-template-columns: 24px minmax(0, 1fr);
+  grid-template-columns: 18px minmax(0, 1fr);
   min-width: 0;
   width: 100%;
-  height: 48px;
-  min-height: 48px;
-  padding: 8px 10px;
-  gap: 8px;
+  height: 38px;
+  min-height: 38px;
+  padding: 6px 7px;
+  gap: 5px;
   align-items: center;
   justify-content: center;
   text-align: center;
@@ -2334,10 +2335,10 @@ body.calibration-fullscreen-active {
 }
 
 .live-actions .button-art {
-  width: 24px;
-  height: 24px;
-  flex-basis: 24px;
-  border-radius: 9px;
+  width: 18px;
+  height: 18px;
+  flex-basis: 18px;
+  border-radius: 7px;
 }
 
 .live-actions .primary-button > span,
@@ -2345,7 +2346,7 @@ body.calibration-fullscreen-active {
   min-width: 0;
   max-width: 100%;
   overflow-wrap: anywhere;
-  font-size: 13px;
+  font-size: 11px;
   line-height: 1.18;
 }
 
@@ -6275,18 +6276,17 @@ td button {
   }
 
   .realtime-import-panel.calibration-focus .live-status-grid,
-  .realtime-import-panel.calibration-focus .live-actions,
   .camera-picker {
     grid-template-columns: 1fr;
   }
 
   .live-actions {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 
   .live-action-group {
-    grid-template-columns: minmax(72px, 0.36fr) repeat(2, minmax(0, 1fr));
-    grid-template-rows: 1fr;
+    grid-template-columns: 1fr;
+    grid-template-rows: auto auto auto;
     align-items: center;
   }
 }
@@ -6892,16 +6892,6 @@ svg {
 
   .source-tabs button {
     justify-content: start;
-  }
-
-  .live-actions {
-    grid-template-columns: 1fr;
-  }
-
-  .live-action-group {
-    grid-template-columns: minmax(84px, 0.34fr) repeat(2, minmax(0, 1fr));
-    grid-template-rows: 1fr;
-    align-items: center;
   }
 
   .rod-form-grid {
