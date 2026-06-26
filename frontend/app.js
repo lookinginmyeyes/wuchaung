@@ -345,12 +345,12 @@ const dataSources = {
   realtime: {
     status: "OpenCV可接入",
     name: "OpenCV 实时追踪",
-    detail: "连接手机或摄像头实时画面，使用中心标定棒建立像素比例，后端 OpenCV 逐帧返回小球轨迹。",
-    schemaTitle: "实时输入：手机画面 + 中心标定棒",
-    schemaDetail: "建议手机固定在量筒正前方；标定棒置于量筒中心轴线，先标定再释放小球。",
+    detail: "连接摄像头后进行标定与追踪。",
+    schemaTitle: "实时输入",
+    schemaDetail: "先标定，再开始追踪。",
     accept: "video/*",
     pickerLabel: "选择备用视频",
-    actionLabel: "实时追踪说明",
+    actionLabel: "开始实时追踪",
     enabled: true,
   },
 };
@@ -1019,8 +1019,8 @@ function describeRealtimeTracking() {
   updateFileQueue("实时视觉追踪方案", "已读取", detail);
   if (el.liveModelStatus) el.liveModelStatus.textContent = "OpenCV后端可用";
   if (el.liveCalibrationStatus) el.liveCalibrationStatus.textContent = "等待标定棒";
-  if (el.liveReadinessLabel) el.liveReadinessLabel.textContent = "OpenCV方案可实现";
-  if (el.liveReadinessDetail) el.liveReadinessDetail.textContent = "本机后端已有视频追踪接口。手机画面接入后，先点选标定棒刻度建立非线性映射，再录制一次落球视频送入 OpenCV 输出轨迹。";
+  if (el.liveReadinessLabel) el.liveReadinessLabel.textContent = "实时追踪";
+  if (el.liveReadinessDetail) el.liveReadinessDetail.textContent = "先完成标定，再开始追踪。";
   showToast("OpenCV实时追踪方案已写入操作区。");
 }
 
@@ -1096,7 +1096,7 @@ function setDataSource(sourceKey) {
     updateFileQueue("等待实验视频", "待选择", "选择真实落球视频后，会先读取预览与元信息。");
   } else if (state.source === "realtime") {
     updateLiveCalibrationStatus();
-    updateFileQueue("等待手机实时画面", "待选择", "连接手机摄像头或系统摄像头后，先用中心标定棒完成 OpenCV 标定。");
+    updateFileQueue("等待画面", "待连接", "连接摄像头后先标定，再开始追踪。");
   } else if (state.source === "trajectory") {
     updateFileQueue("等待真实轨迹文件", "待选择", "选择 CSV 后会显示待分析文件和处理状态。");
   }
