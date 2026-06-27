@@ -1920,6 +1920,10 @@ body.calibration-fullscreen-active {
   transition-duration: 120ms;
 }
 
+.live-preview-frame.is-manual-zoomed {
+  cursor: ns-resize;
+}
+
 .live-zoom-target-layer {
   position: absolute;
   inset: 0;

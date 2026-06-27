@@ -1596,7 +1596,7 @@ function updateManualZoomControls() {
   if (el.toggleLiveMagnifyBtn) {
     el.toggleLiveMagnifyBtn.setAttribute("aria-pressed", state.manualZoomActive ? "true" : "false");
     const label = el.toggleLiveMagnifyBtn.querySelector("span");
-    if (label) label.textContent = state.manualZoomActive ? `选点放大 ${state.manualZoomScale.toFixed(1)}x` : `放大镜 ${state.manualZoomScale.toFixed(1)}x`;
+    if (label) label.textContent = state.manualZoomActive ? `选点放大 ${state.manualZoomScale.toFixed(1)}x` : `滚动查看 ${state.manualZoomScale.toFixed(1)}x`;
   }
 }
 
@@ -1613,6 +1613,18 @@ function handleManualZoomTargetClick(event) {
   };
   const nextScale = state.manualZoomScale < 1.05 ? 1.8 : state.manualZoomScale * 1.35;
   state.manualZoomScale = clamp(nextScale, 1, 5);
+  applyManualVideoZoom();
+}
+
+function handleLiveZoomWheel(event) {
+  if (!isLiveFullscreenActive() || state.manualZoomScale <= 1.001) return;
+  event.preventDefault();
+  const scale = clamp(state.manualZoomScale, 1, 5);
+  const sensitivity = 0.018 / Math.max(1, scale - 0.6);
+  state.manualZoomOrigin = {
+    x: clamp((state.manualZoomOrigin?.x ?? 50) + event.deltaX * sensitivity, 0, 100),
+    y: clamp((state.manualZoomOrigin?.y ?? 50) + event.deltaY * sensitivity, 0, 100),
+  };
   applyManualVideoZoom();
 }
 
@@ -4748,6 +4760,7 @@ function bind() {
   el.toggleLiveMagnifyBtn?.addEventListener("click", toggleManualZoomTargeting);
   el.resetLiveMagnifyBtn?.addEventListener("click", resetManualVideoZoom);
   el.liveZoomTargetLayer?.addEventListener("click", handleManualZoomTargetClick);
+  livePreviewFrame()?.addEventListener("wheel", handleLiveZoomWheel, { passive: false });
   document.addEventListener("fullscreenchange", handleFullscreenChange);
   el.calibrationClickLayer?.addEventListener("click", handleCalibrationClick);
   el.calibrationClickLayer?.addEventListener("pointermove", (event) => {
