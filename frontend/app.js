@@ -128,6 +128,8 @@ const el = {
   studentScorePanel: document.getElementById("studentScorePanel"),
   studentScoreValue: document.getElementById("studentScoreValue"),
   studentScoreRows: document.getElementById("studentScoreRows"),
+  reportPreviewPanel: document.getElementById("reportPreviewPanel"),
+  reportPreview: document.getElementById("reportPreview"),
   trajectoryInput: document.getElementById("trajectoryInput"),
   uploadTrajectoryBtn: document.getElementById("uploadTrajectoryBtn"),
   sourceStatus: document.getElementById("sourceStatus"),
@@ -664,7 +666,7 @@ function fixed(value, digits = 3, fallback = "--") {
 }
 
 function escapeHtml(value) {
-  return String(value)
+  return String(value ?? "")
     .replaceAll("&", "&amp;")
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;")
@@ -1325,6 +1327,10 @@ function handleCalibrationClick(event) {
   }
   const rect = el.calibrationClickLayer.getBoundingClientRect();
   const mediaPoint = calibrationMediaPoint(event, rect);
+  const lockedAxisPoint = state.calibrationPoints.find(Boolean);
+  if (lockedAxisPoint && Number.isFinite(lockedAxisPoint.xNorm)) {
+    mediaPoint.xNorm = lockedAxisPoint.xNorm;
+  }
   const displayPoint = mediaNormToLayerPoint(mediaPoint.xNorm, mediaPoint.yNorm, rect);
   const point = {
     x: displayPoint.xPct / 100,
@@ -1729,6 +1735,17 @@ function renderCalibrationPoints() {
   const points = state.calibrationPoints;
   const hideVisuals = state.calibrationVisualsHidden && !state.calibrationMode;
   const rect = el.calibrationClickLayer?.getBoundingClientRect();
+  const axisPoint = points.find(Boolean);
+  if (el.calibrationClickLayer) {
+    if (!hideVisuals && axisPoint) {
+      const axisDisplay = calibrationPointDisplay(axisPoint, rect);
+      el.calibrationClickLayer.style.setProperty("--calibration-axis-x", `${axisDisplay.xPct}%`);
+      el.calibrationClickLayer.classList.add("is-axis-locked");
+    } else {
+      el.calibrationClickLayer.classList.remove("is-axis-locked");
+      el.calibrationClickLayer.style.removeProperty("--calibration-axis-x");
+    }
+  }
   if (el.calibrationPointsLayer) {
     el.calibrationPointsLayer.innerHTML = hideVisuals ? "" : points
       .map((point, index) => {
@@ -3608,9 +3625,11 @@ function renderRun(run) {
   if (run.id) {
     el.downloadReport.href = apiUrl(`/api/runs/${run.id}/report`);
     el.downloadReport.classList.remove("disabled");
+    renderReportPreview(run.id);
   } else {
     el.downloadReport.href = "#";
     el.downloadReport.classList.add("disabled");
+    clearReportPreview();
   }
   renderDiagnostics(run.diagnostics);
   renderStudentScoreTable(run);
@@ -3656,6 +3675,65 @@ function renderStudentScoreTable(run) {
       `,
     )
     .join("");
+}
+
+function clearReportPreview() {
+  if (el.reportPreviewPanel) el.reportPreviewPanel.hidden = true;
+  if (el.reportPreview) el.reportPreview.innerHTML = "";
+}
+
+async function renderReportPreview(runId) {
+  if (!el.reportPreviewPanel || !el.reportPreview || !runId) return;
+  el.reportPreviewPanel.hidden = false;
+  el.reportPreview.dataset.runId = String(runId);
+  el.reportPreview.innerHTML = `<p class="report-loading">正在载入完整报告...</p>`;
+  try {
+    const response = await fetch(apiUrl(`/api/runs/${runId}/report`));
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const markdown = await response.text();
+    if (el.reportPreview.dataset.runId !== String(runId)) return;
+    el.reportPreview.innerHTML = markdownReportToHtml(markdown);
+  } catch (error) {
+    el.reportPreview.innerHTML = `<p class="report-error">报告载入失败：${escapeHtml(error.message)}</p>`;
+  }
+}
+
+function markdownReportToHtml(markdown) {
+  const blocks = [];
+  const lines = String(markdown || "").split(/\r?\n/);
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index].trim();
+    if (!line) continue;
+    if (line.startsWith("# ")) {
+      blocks.push(`<h3>${escapeHtml(line.slice(2))}</h3>`);
+    } else if (line.startsWith("## ")) {
+      blocks.push(`<h4>${escapeHtml(line.slice(3))}</h4>`);
+    } else if (line.startsWith("|")) {
+      const tableLines = [];
+      while (index < lines.length && lines[index].trim().startsWith("|")) {
+        tableLines.push(lines[index].trim());
+        index += 1;
+      }
+      index -= 1;
+      blocks.push(markdownTableToHtml(tableLines));
+    } else {
+      blocks.push(`<p>${escapeHtml(line)}</p>`);
+    }
+  }
+  return blocks.join("");
+}
+
+function markdownTableToHtml(lines) {
+  const rows = lines
+    .filter((line) => !/^\|\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?$/.test(line))
+    .map((line) => line.replace(/^\||\|$/g, "").split("|").map((cell) => cell.trim()));
+  if (!rows.length) return "";
+  const [head, ...body] = rows;
+  const headHtml = head.map((cell) => `<th>${escapeHtml(cell)}</th>`).join("");
+  const bodyHtml = body
+    .map((row) => `<tr>${row.map((cell) => `<td>${escapeHtml(cell)}</td>`).join("")}</tr>`)
+    .join("");
+  return `<div class="report-table-wrap"><table><thead><tr>${headHtml}</tr></thead><tbody>${bodyHtml}</tbody></table></div>`;
 }
 
 function simulationPayload() {
@@ -4309,7 +4387,6 @@ function drawChart() {
   ctx.clearRect(0, 0, width, height);
   ctx.fillStyle = "#fbfcfa";
   ctx.fillRect(0, 0, width, height);
-  drawGrid(width, height);
 
   if (!state.latest) {
     ctx.fillStyle = "rgba(106, 114, 109, 0.9)";
@@ -4320,7 +4397,7 @@ function drawChart() {
   }
 
   const data = state.latest.curves?.[state.chartMode] || [];
-  const pad = { left: 70, right: 36, top: 34, bottom: 52 };
+  const pad = { left: 92, right: 34, top: 44, bottom: 72 };
   const plotW = width - pad.left - pad.right;
   const plotH = height - pad.top - pad.bottom;
   if (!Array.isArray(data) || !data.length) {
@@ -4346,6 +4423,19 @@ function drawChart() {
   const x = (t) => pad.left + (t / maxT) * plotW;
   const y = (value) => pad.top + plotH - ((value - minValue) / range) * plotH;
 
+  drawScientificAxes({
+    width,
+    height,
+    pad,
+    plotW,
+    plotH,
+    maxT,
+    minValue,
+    maxValue,
+    range,
+    yLabel: state.chartMode === "position" ? "y / m" : "v / (m·s⁻¹)",
+  });
+
   if (state.latest.segment && state.chartMode === "velocity") {
     const segment = state.latest.segment;
     const startT = data[segment.start]?.t ?? 0;
@@ -4370,32 +4460,81 @@ function drawChart() {
 
   ctx.save();
   ctx.fillStyle = "rgba(32, 35, 31, 0.76)";
-  ctx.font = "800 16px system-ui";
-  ctx.fillText(state.chartMode === "position" ? "位移 y(t) / m" : "速度 v(t) / m·s⁻¹", pad.left, 24);
+  ctx.font = "900 17px system-ui";
+  ctx.textAlign = "left";
+  ctx.fillText(state.chartMode === "position" ? "位移-时间曲线" : "速度-时间曲线", pad.left, 26);
   ctx.font = "700 13px ui-monospace, monospace";
   ctx.fillStyle = "rgba(106, 114, 109, 0.92)";
-  ctx.fillText(`max ${maxValue.toFixed(4)}`, 16, pad.top + 10);
-  ctx.fillText("time / s", width - 98, height - 18);
+  ctx.textAlign = "right";
+  ctx.fillText(`max=${formatAxisNumber(maxValue)}`, width - pad.right, 26);
   ctx.restore();
 }
 
-function drawGrid(width, height) {
+function drawScientificAxes({ width, height, pad, plotW, plotH, maxT, minValue, range, yLabel }) {
   ctx.save();
+  ctx.strokeStyle = "rgba(32, 35, 31, 0.18)";
+  ctx.lineWidth = 1.4;
+  ctx.beginPath();
+  ctx.moveTo(pad.left, pad.top);
+  ctx.lineTo(pad.left, pad.top + plotH);
+  ctx.lineTo(pad.left + plotW, pad.top + plotH);
+  ctx.stroke();
+
   ctx.strokeStyle = "rgba(32, 35, 31, 0.075)";
   ctx.lineWidth = 1;
-  for (let x = 70; x < width - 36; x += 82) {
+  ctx.font = "700 12px ui-monospace, monospace";
+  ctx.fillStyle = "rgba(67, 78, 72, 0.84)";
+  ctx.textBaseline = "middle";
+  ctx.textAlign = "center";
+
+  for (let index = 0; index <= 5; index += 1) {
+    const ratio = index / 5;
+    const x = pad.left + ratio * plotW;
     ctx.beginPath();
-    ctx.moveTo(x, 34);
-    ctx.lineTo(x, height - 52);
+    ctx.moveTo(x, pad.top);
+    ctx.lineTo(x, pad.top + plotH);
     ctx.stroke();
+    ctx.fillText(formatAxisNumber(maxT * ratio), x, pad.top + plotH + 22);
   }
-  for (let y = 34; y < height - 52; y += 50) {
+
+  ctx.textAlign = "right";
+  for (let index = 0; index <= 5; index += 1) {
+    const ratio = index / 5;
+    const y = pad.top + plotH - ratio * plotH;
+    const value = minValue + ratio * range;
     ctx.beginPath();
-    ctx.moveTo(70, y);
-    ctx.lineTo(width - 36, y);
+    ctx.moveTo(pad.left, y);
+    ctx.lineTo(pad.left + plotW, y);
     ctx.stroke();
+    ctx.fillText(formatAxisNumber(value), pad.left - 12, y);
   }
+
+  ctx.fillStyle = "rgba(32, 35, 31, 0.78)";
+  ctx.font = "900 14px system-ui";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "alphabetic";
+  ctx.fillText("t / s", pad.left + plotW / 2, height - 22);
+  ctx.save();
+  ctx.translate(22, pad.top + plotH / 2);
+  ctx.rotate(-Math.PI / 2);
+  ctx.fillText(yLabel, 0, 0);
   ctx.restore();
+  ctx.font = "700 11px system-ui";
+  ctx.textAlign = "left";
+  ctx.fillStyle = "rgba(106, 114, 109, 0.76)";
+  ctx.fillText("SI units", pad.left, height - 22);
+  ctx.restore();
+}
+
+function formatAxisNumber(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return "--";
+  const abs = Math.abs(number);
+  if (abs > 0 && (abs < 0.001 || abs >= 1000)) return number.toExponential(2);
+  if (abs < 0.01) return number.toFixed(4);
+  if (abs < 1) return number.toFixed(3);
+  if (abs < 10) return number.toFixed(2);
+  return number.toFixed(1);
 }
 
 function addMessage(type, text) {
@@ -4609,6 +4748,10 @@ function bind() {
   el.calibrationClickLayer?.addEventListener("pointermove", (event) => {
     const rect = el.calibrationClickLayer.getBoundingClientRect();
     const mediaPoint = layerPointToMediaNorm(event, rect);
+    const lockedAxisPoint = state.calibrationMode ? state.calibrationPoints.find(Boolean) : null;
+    if (lockedAxisPoint && Number.isFinite(lockedAxisPoint.xNorm)) {
+      mediaPoint.xNorm = lockedAxisPoint.xNorm;
+    }
     const displayPoint = mediaNormToLayerPoint(mediaPoint.xNorm, mediaPoint.yNorm, rect);
     el.calibrationClickLayer.style.setProperty("--cursor-x", `${displayPoint.xPct}%`);
     el.calibrationClickLayer.style.setProperty("--cursor-y", `${displayPoint.yPct}%`);
