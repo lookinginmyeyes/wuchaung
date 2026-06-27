@@ -1014,10 +1014,11 @@ async function uploadTrajectory() {
 }
 
 function describeRealtimeTracking() {
-  const rodLength = Number(el.calibrationRodLengthMm?.value || 300);
+  const { rodLength, tickSpacing } = calibrationRodConfig();
   const samples = getCalibrationTargetCount();
-  const tickSpacing = Number(el.rodTickSpacingMm?.value || 50);
-  const detail = `先完成标定：长度 ${rodLength || 300} mm，刻度间距 ${tickSpacing || 50} mm，点击 ${samples || 7} 个刻度点。随后释放小球，系统实时输出轨迹。`;
+  const detail = samples
+    ? `先完成标定：长度 ${rodLength} mm，刻度间距 ${tickSpacing} mm，点击 ${samples} 个刻度点。随后释放小球，系统实时输出轨迹。`
+    : "先填写标定棒半径、长度和刻度间距，再连接画面完成标定。";
   updateFileQueue("实时视觉追踪方案", "已读取", detail);
   if (el.liveModelStatus) el.liveModelStatus.textContent = "OpenCV后端可用";
   if (el.liveCalibrationStatus) el.liveCalibrationStatus.textContent = "等待标定棒";
@@ -1130,7 +1131,8 @@ function handleCalibrationConfigChange() {
 
 function syncCalibrationTargetCount() {
   if (el.calibrationRodSamples) {
-    el.calibrationRodSamples.textContent = String(getCalibrationTargetCount());
+    const targetCount = getCalibrationTargetCount();
+    el.calibrationRodSamples.textContent = targetCount ? String(targetCount) : "--";
   }
 }
 
@@ -1232,16 +1234,14 @@ function showRecordedVideo(run) {
 
 function updateLiveCalibrationStatus() {
   if (!el.liveCalibrationStatus) return;
-  const rodLength = Number(el.calibrationRodLengthMm?.value || 300);
-  const rodDiameter = Number(el.calibrationRodDiameterMm?.value || 3);
-  const tickSpacing = Number(el.rodTickSpacingMm?.value || 50);
+  const { rodLength, rodDiameter, tickSpacing, valid } = calibrationRodConfig();
   const targetCount = getCalibrationTargetCount();
-  const paramsValid = rodLength >= 50 && rodDiameter > 0 && tickSpacing > 0 && targetCount >= 3;
+  const paramsValid = valid && targetCount >= 3;
   const pointsReady = state.axisCalibrationPoints.length >= 2 && Number.isFinite(state.manualScaleMPerPx);
   const selectedReady = state.calibrationMode && calibrationPointsReady();
   if (!paramsValid) {
     el.liveCalibrationStatus.textContent = "参数需补齐";
-    if (el.liveReadinessDetail) el.liveReadinessDetail.textContent = "请补齐标定棒直径、长度、刻度间距和点击点数。";
+    if (el.liveReadinessDetail) el.liveReadinessDetail.textContent = "请补齐标定棒半径、长度、刻度间距和点击点数。";
     return;
   }
   if (selectedReady) {
@@ -1260,12 +1260,19 @@ function updateLiveCalibrationStatus() {
   }
   el.liveCalibrationStatus.textContent = "等待点选刻度";
   if (el.liveReadinessDetail) {
-    el.liveReadinessDetail.textContent = `参数已就绪：直径 ${rodDiameter} mm，长度 ${rodLength} mm，刻度间距 ${tickSpacing} mm。请点击“开始标定”，从上到下点 ${targetCount} 个刻度。`;
+    el.liveReadinessDetail.textContent = `参数已就绪：半径 ${rodDiameter} mm，长度 ${rodLength} mm，刻度间距 ${tickSpacing} mm。请点击“开始标定”，从上到下点 ${targetCount} 个刻度。`;
   }
 }
 
 function startManualCalibration() {
   if (!el.calibrationClickLayer) return;
+  const targetCount = getCalibrationTargetCount();
+  if (!targetCount) {
+    updateLiveCalibrationStatus();
+    syncCalibrationTargetCount();
+    showToast("请先填写标定棒半径、长度和刻度间距。");
+    return;
+  }
   if (!state.liveStream && !el.videoPreview?.src) {
     showToast("请先连接实时画面，或选择实验视频作为标定画面。");
   }
@@ -1284,8 +1291,8 @@ function startManualCalibration() {
   enterLiveFullscreen("calibration");
   renderCalibrationPoints();
   updateLiveCalibrationStatus();
-  if (el.calibrationPointStatus) el.calibrationPointStatus.textContent = `0/${getCalibrationTargetCount()}`;
-  showToast(`请从标定棒上端开始，按顺序点击 ${getCalibrationTargetCount()} 个刻度点。`);
+  if (el.calibrationPointStatus) el.calibrationPointStatus.textContent = `0/${targetCount}`;
+  showToast(`请沿量筒中心虚线，从标定棒上端开始按顺序点击 ${targetCount} 个刻度点。`);
 }
 
 function resetManualCalibration() {
@@ -1327,10 +1334,7 @@ function handleCalibrationClick(event) {
   }
   const rect = el.calibrationClickLayer.getBoundingClientRect();
   const mediaPoint = calibrationMediaPoint(event, rect);
-  const lockedAxisPoint = state.calibrationPoints.find(Boolean);
-  if (lockedAxisPoint && Number.isFinite(lockedAxisPoint.xNorm)) {
-    mediaPoint.xNorm = lockedAxisPoint.xNorm;
-  }
+  mediaPoint.xNorm = fallOffsetConfig().centerPct / 100;
   const displayPoint = mediaNormToLayerPoint(mediaPoint.xNorm, mediaPoint.yNorm, rect);
   const point = {
     x: displayPoint.xPct / 100,
@@ -1719,6 +1723,7 @@ function calibrationPointDisplay(point, layerRect) {
 
 function calibrationPointsReady() {
   const targetCount = getCalibrationTargetCount();
+  if (!targetCount) return false;
   if (state.calibrationPoints.length < targetCount) return false;
   return state.calibrationPoints.slice(0, targetCount).every(Boolean);
 }
@@ -1735,16 +1740,8 @@ function renderCalibrationPoints() {
   const points = state.calibrationPoints;
   const hideVisuals = state.calibrationVisualsHidden && !state.calibrationMode;
   const rect = el.calibrationClickLayer?.getBoundingClientRect();
-  const axisPoint = points.find(Boolean);
   if (el.calibrationClickLayer) {
-    if (!hideVisuals && axisPoint) {
-      const axisDisplay = calibrationPointDisplay(axisPoint, rect);
-      el.calibrationClickLayer.style.setProperty("--calibration-axis-x", `${axisDisplay.xPct}%`);
-      el.calibrationClickLayer.classList.add("is-axis-locked");
-    } else {
-      el.calibrationClickLayer.classList.remove("is-axis-locked");
-      el.calibrationClickLayer.style.removeProperty("--calibration-axis-x");
-    }
+    el.calibrationClickLayer.classList.toggle("is-axis-locked", !hideVisuals && state.calibrationMode);
   }
   if (el.calibrationPointsLayer) {
     el.calibrationPointsLayer.innerHTML = hideVisuals ? "" : points
@@ -1782,7 +1779,7 @@ function renderCalibrationPoints() {
   const targetCount = getCalibrationTargetCount();
   const selectedCount = points.slice(0, targetCount).filter(Boolean).length;
   if (el.calibrationPointStatus) {
-    el.calibrationPointStatus.textContent = selectedCount ? `${selectedCount}/${targetCount}` : "未选择";
+    el.calibrationPointStatus.textContent = targetCount && selectedCount ? `${selectedCount}/${targetCount}` : "未选择";
   }
   if (el.calibrationPixelDistance) {
     el.calibrationPixelDistance.textContent = distancePx ? `${distancePx.toFixed(1)} px` : "--";
@@ -1792,21 +1789,27 @@ function renderCalibrationPoints() {
   }
 }
 
+function calibrationRodConfig() {
+  const rodDiameter = finiteNumber(el.calibrationRodDiameterMm?.value);
+  const rodLength = finiteNumber(el.calibrationRodLengthMm?.value);
+  const tickSpacing = finiteNumber(el.rodTickSpacingMm?.value);
+  const valid = rodDiameter !== null && rodLength !== null && tickSpacing !== null && rodDiameter > 0 && rodLength >= 50 && tickSpacing > 0;
+  return { rodDiameter, rodLength, tickSpacing, valid };
+}
+
 function getCalibrationTargetCount() {
-  const rodLength = Number(el.calibrationRodLengthMm?.value || 300);
-  const tickSpacing = Number(el.rodTickSpacingMm?.value || 50);
-  const fullSteps = tickSpacing > 0 ? Math.floor(rodLength / tickSpacing) : 6;
-  const remainder = tickSpacing > 0 ? rodLength - fullSteps * tickSpacing : 0;
-  const derived = tickSpacing > 0 ? fullSteps + 1 + (remainder > 1e-6 ? 1 : 0) : 7;
+  const { rodLength, tickSpacing, valid } = calibrationRodConfig();
+  if (!valid) return 0;
+  const fullSteps = Math.floor(rodLength / tickSpacing);
+  const remainder = rodLength - fullSteps * tickSpacing;
+  const derived = fullSteps + 1 + (remainder > 1e-6 ? 1 : 0);
   return Math.max(3, Math.min(31, Math.round(derived)));
 }
 
 function calibrationDistanceMmAt(index) {
-  const rodLength = Number(el.calibrationRodLengthMm?.value || 300);
-  const tickSpacing = Number(el.rodTickSpacingMm?.value || 50);
+  const { rodLength, tickSpacing, valid } = calibrationRodConfig();
   const targetCount = getCalibrationTargetCount();
-  if (!Number.isFinite(rodLength) || rodLength <= 0) return null;
-  if (!Number.isFinite(tickSpacing) || tickSpacing <= 0) return index;
+  if (!valid || !targetCount) return null;
   if (index >= targetCount - 1) return rodLength;
   return Math.min(rodLength, index * tickSpacing);
 }
@@ -1827,6 +1830,7 @@ function buildAxisCalibrationPoints() {
 
 function calibrationClickHint(index) {
   const targetCount = getCalibrationTargetCount();
+  if (!targetCount) return "请先填写标定棒参数";
   const safeIndex = clamp(index, 0, targetCount - 1);
   const nextMm = Math.round(calibrationDistanceMmAt(safeIndex) || 0);
   return `点击 ${nextMm} mm 刻度 · ${safeIndex + 1}/${targetCount}`;
@@ -3077,7 +3081,8 @@ function estimateScaleMetersPerPixel() {
   if (Number.isFinite(state.manualScaleMPerPx) && state.manualScaleMPerPx > 0) {
     return state.manualScaleMPerPx;
   }
-  const rodLengthM = Number(el.calibrationRodLengthMm?.value || 300) / 1000;
+  const { rodLength } = calibrationRodConfig();
+  const rodLengthM = (rodLength || 0) / 1000;
   const frameHeight = el.videoPreview?.videoHeight || el.livePreview?.videoHeight || 0;
   if (!Number.isFinite(rodLengthM) || rodLengthM <= 0 || !frameHeight) return null;
   return rodLengthM / (frameHeight * 0.78);
@@ -4748,9 +4753,8 @@ function bind() {
   el.calibrationClickLayer?.addEventListener("pointermove", (event) => {
     const rect = el.calibrationClickLayer.getBoundingClientRect();
     const mediaPoint = layerPointToMediaNorm(event, rect);
-    const lockedAxisPoint = state.calibrationMode ? state.calibrationPoints.find(Boolean) : null;
-    if (lockedAxisPoint && Number.isFinite(lockedAxisPoint.xNorm)) {
-      mediaPoint.xNorm = lockedAxisPoint.xNorm;
+    if (state.calibrationMode) {
+      mediaPoint.xNorm = fallOffsetConfig().centerPct / 100;
     }
     const displayPoint = mediaNormToLayerPoint(mediaPoint.xNorm, mediaPoint.yNorm, rect);
     el.calibrationClickLayer.style.setProperty("--cursor-x", `${displayPoint.xPct}%`);

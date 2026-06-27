@@ -1618,13 +1618,37 @@ body.calibration-fullscreen-active {
   left: var(--cylinder-center-x);
   width: 2px;
   border-radius: 999px;
-  background: linear-gradient(180deg, transparent, rgba(230, 197, 127, 0.9), transparent);
+  background: repeating-linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.96) 0 12px,
+    transparent 12px 19px,
+    rgba(230, 197, 127, 0.92) 19px 31px,
+    transparent 31px 38px
+  );
   box-shadow: 0 0 12px rgba(230, 197, 127, 0.2);
   transform: translateX(-50%);
 }
 
 .live-preview-frame.is-axis-calibrating .cylinder-center-overlay {
-  display: none;
+  display: block;
+  z-index: 11;
+}
+
+.live-preview-frame.is-axis-calibrating .cylinder-width-guide {
+  opacity: 0.22;
+}
+
+.live-preview-frame.is-axis-calibrating .cylinder-center-line {
+  width: 3px;
+  opacity: 1;
+  background: repeating-linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 1) 0 14px,
+    transparent 14px 21px,
+    rgba(230, 197, 127, 1) 21px 35px,
+    transparent 35px 42px
+  );
+  box-shadow: 0 0 24px rgba(230, 197, 127, 0.56);
 }
 
 .ball-offset-marker {
@@ -1740,7 +1764,11 @@ body.calibration-fullscreen-active {
   bottom: 8px;
   width: 2px;
   border-radius: 999px;
-  background: rgba(230, 197, 127, 0.9);
+  background: repeating-linear-gradient(
+    180deg,
+    rgba(230, 197, 127, 0.96) 0 11px,
+    transparent 11px 18px
+  );
   box-shadow: 0 0 14px rgba(230, 197, 127, 0.24);
   transform: translateX(-50%);
 }
@@ -1811,25 +1839,6 @@ body.calibration-fullscreen-active {
     linear-gradient(rgba(230, 197, 127, 0.16) 1px, transparent 1px),
     linear-gradient(90deg, rgba(230, 197, 127, 0.12) 1px, transparent 1px);
   background-size: auto, 32px 32px, 32px 32px;
-}
-
-.calibration-click-layer.is-axis-locked::before {
-  content: "";
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  left: var(--calibration-axis-x, 50%);
-  width: 2px;
-  pointer-events: none;
-  background: repeating-linear-gradient(
-    180deg,
-    rgba(255, 255, 255, 0.96) 0 12px,
-    transparent 12px 19px,
-    rgba(230, 197, 127, 0.92) 19px 31px,
-    transparent 31px 38px
-  );
-  box-shadow: 0 0 18px rgba(230, 197, 127, 0.36);
-  transform: translateX(-50%);
 }
 
 .calibration-click-layer.is-calibrating::after {
@@ -2660,11 +2669,11 @@ select {
 
 .workspace .parameter-panel .student-box {
   display: grid;
-  grid-template-columns: minmax(180px, 0.28fr) minmax(420px, 0.72fr);
+  grid-template-columns: minmax(150px, auto) minmax(320px, 0.52fr);
   align-items: center;
-  gap: 16px;
-  padding: 18px;
-  border-radius: 16px;
+  gap: 12px;
+  padding: 14px 16px;
+  border-radius: 15px;
   background:
     linear-gradient(135deg, rgba(230, 197, 127, 0.18), rgba(50, 122, 102, 0.08)),
     #fbfcfa;
@@ -2672,34 +2681,37 @@ select {
 }
 
 .workspace .parameter-panel .student-box h3 {
+  display: flex;
+  min-height: 100%;
+  align-items: center;
   margin: 0;
   color: #24352f;
-  font-size: 22px;
+  font-size: 28px;
   font-weight: 950;
   letter-spacing: 0;
+  line-height: 1.12;
 }
 
 .workspace .parameter-panel .student-box .form-grid {
-  grid-template-columns: repeat(2, minmax(150px, 1fr));
+  grid-template-columns: repeat(2, minmax(120px, 1fr));
   margin-top: 0;
-  gap: 14px;
+  gap: 12px;
 }
 
 .workspace .parameter-panel .student-box .primary-button {
   grid-column: 2;
-  min-height: 54px;
-  font-size: 15px;
+  min-height: 46px;
 }
 
 .workspace .parameter-panel .student-box label span {
   color: #52645d;
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 900;
 }
 
 .workspace .parameter-panel .student-box input {
-  min-height: 54px;
-  font-size: 18px;
+  min-height: 46px;
+  font-size: 16px;
   font-weight: 850;
 }
 

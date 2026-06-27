@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>落球法测液体粘滞系数实验 AI 学习平台</title>
     <link rel="icon" href="./assets/generated/icons/calibration.png" />
-    <link rel="stylesheet" href="./styles.css?v=research-report-v97" />
+    <link rel="stylesheet" href="./styles.css?v=calibration-center-v100" />
   </head>
   <body>
     <div class="app-shell">
@@ -540,40 +540,24 @@
                 <div class="calibration-rod-card">
                   <div>
                     <span>标定棒校正</span>
-                    <strong>点选刻度，建立真实高度映射</strong>
-                    <p>按间距自动生成点数；末点始终落在标定棒终点。</p>
                   </div>
                   <div class="rod-form-grid">
                     <label>
-                      <span>标定棒直径 mm</span>
-                      <input id="calibrationRodDiameterMm" type="number" value="3" step="0.1" />
+                      <span>标定棒半径 mm</span>
+                      <input id="calibrationRodDiameterMm" type="number" step="0.1" />
                     </label>
                     <label>
                       <span>标定棒长度 mm</span>
-                      <input id="calibrationRodLengthMm" type="number" value="300" step="1" />
+                      <input id="calibrationRodLengthMm" type="number" step="1" />
                     </label>
                     <label>
                       <span>刻度间距 mm</span>
-                      <input id="rodTickSpacingMm" type="number" value="50" step="5" min="1" />
+                      <input id="rodTickSpacingMm" type="number" step="5" min="1" />
                     </label>
                     <label>
                       <span>自动点数</span>
-                      <output id="calibrationRodSamples">7</output>
+                      <output id="calibrationRodSamples">--</output>
                     </label>
-                  </div>
-                  <div class="calibration-result-strip">
-                    <article>
-                      <span>已选刻度</span>
-                      <strong id="calibrationPointStatus">未选择</strong>
-                    </article>
-                    <article>
-                      <span>像素跨度</span>
-                      <strong id="calibrationPixelDistance">--</strong>
-                    </article>
-                    <article>
-                      <span>平均比例</span>
-                      <strong id="calibrationScale">--</strong>
-                    </article>
                   </div>
                 </div>
 
@@ -1208,6 +1192,6 @@
     </div>
 
     <div id="toast" class="toast"></div>
-    <script src="./app.js?v=research-report-v97"></script>
+    <script src="./app.js?v=calibration-center-v100"></script>
   </body>
 </html>
