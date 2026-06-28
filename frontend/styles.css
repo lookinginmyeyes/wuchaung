@@ -1620,10 +1620,10 @@ body.calibration-fullscreen-active {
   border-radius: 999px;
   background: repeating-linear-gradient(
     180deg,
-    rgba(255, 255, 255, 0.96) 0 12px,
-    transparent 12px 19px,
-    rgba(230, 197, 127, 0.92) 19px 31px,
-    transparent 31px 38px
+    rgba(255, 255, 255, 0.96) 0 8px,
+    transparent 8px 24px,
+    rgba(230, 197, 127, 0.92) 24px 32px,
+    transparent 32px 48px
   );
   box-shadow: 0 0 12px rgba(230, 197, 127, 0.2);
   transform: translateX(-50%);
@@ -1643,10 +1643,10 @@ body.calibration-fullscreen-active {
   opacity: 1;
   background: repeating-linear-gradient(
     180deg,
-    rgba(255, 255, 255, 1) 0 14px,
-    transparent 14px 21px,
-    rgba(230, 197, 127, 1) 21px 35px,
-    transparent 35px 42px
+    rgba(255, 255, 255, 1) 0 9px,
+    transparent 9px 28px,
+    rgba(230, 197, 127, 1) 28px 37px,
+    transparent 37px 56px
   );
   box-shadow: 0 0 24px rgba(230, 197, 127, 0.56);
 }

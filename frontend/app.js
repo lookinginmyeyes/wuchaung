@@ -1,6 +1,7 @@
-const LIVE_FRAME_INTERVAL_MS = 36;
+const LIVE_FRAME_TARGET_FPS = 60;
+const LIVE_FRAME_INTERVAL_MS = Math.round(1000 / LIVE_FRAME_TARGET_FPS);
 const LIVE_FRAME_MAX_WIDTH = 1920;
-const LIVE_FRAME_JPEG_QUALITY = 0.92;
+const LIVE_FRAME_JPEG_QUALITY = 0.9;
 const LIVE_MIN_TRACK_CONFIDENCE = 0.38;
 const LIVE_STATIC_POINT_LIMIT = 5;
 const LIVE_STATIC_POINT_MATCH_NORM = 0.006;
@@ -9,7 +10,8 @@ const LIVE_STATIC_POINT_MAX_ZONES = 8;
 const LIVE_CHART_INTERVAL_MS = 120;
 const LIVE_BACKEND_FAILURE_LIMIT = 5;
 const LIVE_TRAJECTORY_LIMIT = 2400;
-const LIVE_MAX_IN_FLIGHT_FRAMES = 2;
+const LIVE_MAX_IN_FLIGHT_FRAMES = 3;
+const LIVE_SAMPLE_FPS_WINDOW_MS = 1000;
 const FALL_OFFSET_MONITOR_ENABLED = true;
 const LOCAL_API_BASE_URL = "http://127.0.0.1:8877";
 const HOSTED_API_BASE_URL = "https://42.194.177.159";
@@ -50,6 +52,9 @@ const state = {
   liveIgnoreZones: [],
   liveMisses: 0,
   liveBackendFailures: 0,
+  liveSampleWindowStart: 0,
+  liveSampleWindowFrames: 0,
+  liveMeasuredSampleFps: 0,
   liveChartDrawTimer: null,
   lastLiveChartDrawAt: 0,
   liveFrameBusy: false,
@@ -2026,6 +2031,9 @@ async function startLiveRecording() {
   state.liveFrameBusy = false;
   state.liveFramesInFlight = 0;
   state.lastLiveFrameCaptureAt = 0;
+  state.liveSampleWindowStart = performance.now();
+  state.liveSampleWindowFrames = 0;
+  state.liveMeasuredSampleFps = 0;
   state.liveFrameScheduled = false;
   if (state.liveFrameTimer) {
     window.clearTimeout(state.liveFrameTimer);
@@ -2044,10 +2052,10 @@ async function startLiveRecording() {
   if (el.startLiveRecordBtn) el.startLiveRecordBtn.disabled = true;
   if (el.stopLiveRecordBtn) el.stopLiveRecordBtn.disabled = false;
   if (el.liveCameraStatus) el.liveCameraStatus.textContent = "实时追踪中";
-  if (el.liveModelStatus) el.liveModelStatus.textContent = "逐帧识别中";
+  if (el.liveModelStatus) el.liveModelStatus.textContent = `高频采样中 · 目标 ${LIVE_FRAME_TARGET_FPS} fps`;
   if (el.liveReadinessLabel) el.liveReadinessLabel.textContent = "实时追踪中";
   if (el.liveReadinessDetail) el.liveReadinessDetail.textContent = "后端正在逐帧识别小球中心，曲线会随轨迹点实时刷新。停止后将把轨迹送入粘度计算。";
-  updateFileQueue("正在实时追踪小球", "处理中", "浏览器逐帧抓取手机画面，后端 OpenCV 返回球心坐标，曲线会即时更新。");
+  updateFileQueue("正在实时追踪小球", "处理中", `浏览器以最高 ${LIVE_FRAME_TARGET_FPS} fps 抓取手机画面，后端 OpenCV 返回球心坐标，曲线会即时更新。`);
   startLiveVideoCapture();
   scheduleLiveFrame();
   showToast("开始实时追踪，释放小球后观察曲线变化。");
@@ -2184,6 +2192,27 @@ function cancelLiveFrameSchedule() {
   state.liveFrameScheduled = false;
 }
 
+function updateLiveSampleRate(now) {
+  if (!state.liveSampleWindowStart) {
+    state.liveSampleWindowStart = now;
+    state.liveSampleWindowFrames = 0;
+  }
+  state.liveSampleWindowFrames += 1;
+  const elapsed = now - state.liveSampleWindowStart;
+  if (elapsed >= LIVE_SAMPLE_FPS_WINDOW_MS) {
+    state.liveMeasuredSampleFps = (state.liveSampleWindowFrames * 1000) / Math.max(1, elapsed);
+    state.liveSampleWindowStart = now;
+    state.liveSampleWindowFrames = 0;
+  }
+}
+
+function liveSampleRateText() {
+  if (!Number.isFinite(state.liveMeasuredSampleFps) || state.liveMeasuredSampleFps <= 0) {
+    return `目标 ${LIVE_FRAME_TARGET_FPS} fps`;
+  }
+  return `采样 ${state.liveMeasuredSampleFps.toFixed(1)} fps`;
+}
+
 async function captureLiveFrame(metadata = null) {
   if (!state.liveTracking) return;
   const now = performance.now();
@@ -2196,6 +2225,7 @@ async function captureLiveFrame(metadata = null) {
     return;
   }
   state.lastLiveFrameCaptureAt = now;
+  updateLiveSampleRate(now);
   const mediaTime = Number(metadata?.mediaTime);
   if (Number.isFinite(mediaTime) && state.liveTrackingMediaStart === null) {
     state.liveTrackingMediaStart = mediaTime;
@@ -2226,16 +2256,16 @@ async function captureLiveFrame(metadata = null) {
       if (isHighConfidence) {
         insertLiveTrajectoryPoint(point);
         if (state.liveTrajectory.length > LIVE_TRAJECTORY_LIMIT) state.liveTrajectory.shift();
-        if (el.liveModelStatus) el.liveModelStatus.textContent = `已追踪 ${state.liveTrajectory.length} 点 · 处理中 ${state.liveFramesInFlight}`;
+        if (el.liveModelStatus) el.liveModelStatus.textContent = `已追踪 ${state.liveTrajectory.length} 点 · ${liveSampleRateText()} · 处理中 ${state.liveFramesInFlight}`;
         if (FALL_OFFSET_MONITOR_ENABLED) updateFallOffsetStatus(point);
         renderLiveTrackingPreview();
       } else {
         state.liveMisses += 1;
-        if (el.liveModelStatus) el.liveModelStatus.textContent = `低置信度跳过 · 处理中 ${state.liveFramesInFlight}`;
+        if (el.liveModelStatus) el.liveModelStatus.textContent = `低置信度跳过 · ${liveSampleRateText()} · 处理中 ${state.liveFramesInFlight}`;
       }
     } else {
       state.liveMisses += 1;
-      if (el.liveModelStatus) el.liveModelStatus.textContent = `未识别 ${state.liveMisses} 帧`;
+      if (el.liveModelStatus) el.liveModelStatus.textContent = `未识别 ${state.liveMisses} 帧 · ${liveSampleRateText()}`;
       if (FALL_OFFSET_MONITOR_ENABLED && state.liveMisses % 4 === 1) updateFallOffsetStatus(null);
     }
   } catch (error) {
@@ -3805,7 +3835,7 @@ async function runSimulation() {
     state.simulation = result;
     renderSimulation(result);
     playSimulationDropOnce();
-    showToast("仿真完成，已输出小球速度曲线。");
+  showToast("仿真完成，已输出小球位移和速度曲线。");
   } catch (error) {
     console.error("simulation failed", error);
     renderSimulationError(error.message || "前端渲染异常");
@@ -3959,60 +3989,61 @@ function drawSimulationCanvas(timestamp = performance.now()) {
   simCtx.fillRect(0, 0, width, height);
 
   const run = state.simulation?.run;
-  const points = (run?.curves?.velocity || []).filter((point) => finiteNumber(point?.t) !== null && finiteNumber(point?.v) !== null);
+  const velocityPoints = (run?.curves?.velocity || []).filter((point) => finiteNumber(point?.t) !== null && finiteNumber(point?.v) !== null);
+  const positionPoints = (run?.curves?.position || []).filter((point) => finiteNumber(point?.t) !== null && finiteNumber(point?.y) !== null);
   if (simulationDrop.active && simulationDrop.startTime === null) simulationDrop.startTime = timestamp;
   const elapsed = simulationDrop.startTime === null ? 0 : Math.max(0, timestamp - simulationDrop.startTime);
   const dropProgress = Math.min(1, elapsed / simulationDrop.duration);
   const easedDropProgress = 1 - Math.pow(1 - dropProgress, 3);
   const tube = { x: 72, y: 46, w: 212, h: 458 };
   const progress = simulationDrop.active ? easedDropProgress : simulationDrop.completed ? 1 : 0;
-  const drift = points.length
+  const drift = velocityPoints.length
     ? Math.min(0.1, finiteNumber(state.simulation?.simulation?.release_bias, 0) * 0.08)
     : number(el.simRelease, 0) * 0.08;
   drawSimulationCylinder(tube, progress, drift, timestamp);
 
-  const plot = { x: 340, y: 76, w: 500, h: 360 };
+  const plotArea = { x: 330, y: 58, w: 528, h: 438 };
+  const positionPlot = { x: plotArea.x, y: plotArea.y + 30, w: plotArea.w, h: 170 };
+  const velocityPlot = { x: plotArea.x, y: plotArea.y + 254, w: plotArea.w, h: 170 };
   simCtx.save();
-  simCtx.strokeStyle = "rgba(32, 35, 31, 0.09)";
-  simCtx.lineWidth = 1;
-  for (let x = plot.x; x <= plot.x + plot.w; x += 62) {
-    simCtx.beginPath();
-    simCtx.moveTo(x, plot.y);
-    simCtx.lineTo(x, plot.y + plot.h);
-    simCtx.stroke();
-  }
-  for (let y = plot.y; y <= plot.y + plot.h; y += 52) {
-    simCtx.beginPath();
-    simCtx.moveTo(plot.x, y);
-    simCtx.lineTo(plot.x + plot.w, y);
-    simCtx.stroke();
-  }
   simCtx.fillStyle = "#20231f";
-  simCtx.font = "900 26px Avenir Next, sans-serif";
-  simCtx.fillText("v(t)", plot.x, 42);
+  simCtx.font = "900 22px Avenir Next, sans-serif";
+  simCtx.textAlign = "left";
+  simCtx.fillText("s(t) 与 v(t) 科研坐标曲线", plotArea.x, 36);
   simCtx.fillStyle = "rgba(106, 114, 109, 0.92)";
-  simCtx.font = "800 15px Avenir Next, sans-serif";
-  simCtx.fillText(points.length ? "后端已输出小球速度曲线" : "调节液体和容器参数后运行仿真", plot.x + 78, 42);
+  simCtx.font = "800 13px Avenir Next, sans-serif";
+  simCtx.fillText(velocityPoints.length ? "后端已输出位移-时间与速度-时间数据" : "调节液体和容器参数后运行仿真", plotArea.x + 268, 36);
 
-  const drawPoints = points.length ? points : samplePreviewVelocity();
-  const maxT = Math.max(...drawPoints.map((p) => finiteNumber(p.t, 0)), 1);
-  const maxV = Math.max(...drawPoints.map((p) => finiteNumber(p.v, 0)), 0.001);
-  const xFor = (t) => plot.x + (t / maxT) * plot.w;
-  const yFor = (v) => plot.y + plot.h - (v / maxV) * plot.h * 0.88;
-  simCtx.strokeStyle = points.length ? "#a26025" : "rgba(162, 96, 37, 0.48)";
-  simCtx.lineWidth = 5;
-  simCtx.lineCap = "round";
-  simCtx.lineJoin = "round";
-  simCtx.beginPath();
-  drawPoints.forEach((point, index) => {
-    const pointT = finiteNumber(point.t, 0);
-    const pointV = finiteNumber(point.v, 0);
-    if (index === 0) simCtx.moveTo(xFor(pointT), yFor(pointV));
-    else simCtx.lineTo(xFor(pointT), yFor(pointV));
+  const previewVelocity = samplePreviewVelocity();
+  const drawVelocity = velocityPoints.length ? velocityPoints : previewVelocity;
+  const drawPosition = positionPoints.length ? positionPoints : buildPreviewPositionFromVelocity(previewVelocity);
+  const maxT = Math.max(
+    1,
+    ...drawVelocity.map((p) => finiteNumber(p.t, 0)),
+    ...drawPosition.map((p) => finiteNumber(p.t, 0)),
+  );
+  drawSimulationScientificPlot({
+    plot: positionPlot,
+    points: drawPosition,
+    valueKey: "y",
+    maxT,
+    title: "位移-时间曲线",
+    xLabel: "时间 t / s",
+    yLabel: "下落位移 s / m",
+    color: positionPoints.length ? "#327a66" : "rgba(50, 122, 102, 0.48)",
   });
-  simCtx.stroke();
+  const velocityScale = drawSimulationScientificPlot({
+    plot: velocityPlot,
+    points: drawVelocity,
+    valueKey: "v",
+    maxT,
+    title: "速度-时间曲线",
+    xLabel: "时间 t / s",
+    yLabel: "瞬时速度 v / (m·s⁻¹)",
+    color: velocityPoints.length ? "#a26025" : "rgba(162, 96, 37, 0.48)",
+  });
 
-  if (points.length) {
+  if (velocityPoints.length) {
     const terminalVelocity = finiteNumber(state.simulation?.run?.result?.terminal_velocity);
     if (terminalVelocity === null) {
       simCtx.restore();
@@ -4020,17 +4051,103 @@ function drawSimulationCanvas(timestamp = performance.now()) {
     }
     simCtx.strokeStyle = "rgba(50, 122, 102, 0.44)";
     simCtx.setLineDash([8, 8]);
-    const vtY = yFor(terminalVelocity);
+    const vtY = velocityScale.yFor(terminalVelocity);
     simCtx.beginPath();
-    simCtx.moveTo(plot.x, vtY);
-    simCtx.lineTo(plot.x + plot.w, vtY);
+    simCtx.moveTo(velocityPlot.x, vtY);
+    simCtx.lineTo(velocityPlot.x + velocityPlot.w, vtY);
     simCtx.stroke();
     simCtx.setLineDash([]);
     simCtx.fillStyle = "#235b4c";
-    simCtx.font = "900 14px ui-monospace, monospace";
-    simCtx.fillText(`vt=${terminalVelocity.toFixed(4)} m/s`, plot.x + plot.w - 156, vtY - 12);
+    simCtx.font = "900 12px ui-monospace, monospace";
+    simCtx.textAlign = "right";
+    simCtx.fillText(`v_t = ${terminalVelocity.toFixed(4)} m·s⁻¹`, velocityPlot.x + velocityPlot.w - 4, vtY - 8);
   }
   simCtx.restore();
+}
+
+function drawSimulationScientificPlot({ plot, points, valueKey, maxT, title, xLabel, yLabel, color }) {
+  const values = points.map((point) => finiteNumber(point?.[valueKey], 0));
+  const minValue = Math.min(0, ...values);
+  const maxValue = Math.max(0.0001, ...values);
+  const range = Math.max(0.0001, maxValue - minValue);
+  const xFor = (t) => plot.x + (finiteNumber(t, 0) / maxT) * plot.w;
+  const yFor = (value) => plot.y + plot.h - ((finiteNumber(value, 0) - minValue) / range) * plot.h * 0.9 - plot.h * 0.04;
+
+  simCtx.save();
+  simCtx.strokeStyle = "rgba(32, 35, 31, 0.18)";
+  simCtx.lineWidth = 1.2;
+  simCtx.beginPath();
+  simCtx.moveTo(plot.x, plot.y);
+  simCtx.lineTo(plot.x, plot.y + plot.h);
+  simCtx.lineTo(plot.x + plot.w, plot.y + plot.h);
+  simCtx.stroke();
+
+  simCtx.strokeStyle = "rgba(32, 35, 31, 0.08)";
+  simCtx.lineWidth = 1;
+  simCtx.font = "700 10px ui-monospace, monospace";
+  simCtx.fillStyle = "rgba(67, 78, 72, 0.82)";
+  simCtx.textBaseline = "middle";
+  for (let index = 0; index <= 4; index += 1) {
+    const ratio = index / 4;
+    const x = plot.x + ratio * plot.w;
+    simCtx.beginPath();
+    simCtx.moveTo(x, plot.y);
+    simCtx.lineTo(x, plot.y + plot.h);
+    simCtx.stroke();
+    simCtx.textAlign = "center";
+    simCtx.fillText(formatAxisNumber(maxT * ratio), x, plot.y + plot.h + 16);
+  }
+  for (let index = 0; index <= 4; index += 1) {
+    const ratio = index / 4;
+    const y = plot.y + plot.h - ratio * plot.h;
+    const value = minValue + ratio * range;
+    simCtx.beginPath();
+    simCtx.moveTo(plot.x, y);
+    simCtx.lineTo(plot.x + plot.w, y);
+    simCtx.stroke();
+    simCtx.textAlign = "right";
+    simCtx.fillText(formatAxisNumber(value), plot.x - 8, y);
+  }
+
+  simCtx.strokeStyle = color;
+  simCtx.lineWidth = 3.2;
+  simCtx.lineCap = "round";
+  simCtx.lineJoin = "round";
+  simCtx.beginPath();
+  points.forEach((point, index) => {
+    const x = xFor(point.t);
+    const y = yFor(point[valueKey]);
+    if (index === 0) simCtx.moveTo(x, y);
+    else simCtx.lineTo(x, y);
+  });
+  simCtx.stroke();
+
+  simCtx.fillStyle = "rgba(32, 35, 31, 0.78)";
+  simCtx.font = "900 12px system-ui";
+  simCtx.textAlign = "left";
+  simCtx.fillText(title, plot.x, plot.y - 13);
+  simCtx.font = "800 10px system-ui";
+  simCtx.textAlign = "center";
+  simCtx.fillText(xLabel, plot.x + plot.w / 2, plot.y + plot.h + 34);
+  simCtx.save();
+  simCtx.translate(plot.x - 52, plot.y + plot.h / 2);
+  simCtx.rotate(-Math.PI / 2);
+  simCtx.fillText(yLabel, 0, 0);
+  simCtx.restore();
+  simCtx.restore();
+  return { xFor, yFor, minValue, maxValue, range };
+}
+
+function buildPreviewPositionFromVelocity(points) {
+  let position = 0;
+  return points.map((point, index) => {
+    if (index > 0) {
+      const previous = points[index - 1];
+      const dt = Math.max(0, finiteNumber(point.t, 0) - finiteNumber(previous.t, 0));
+      position += ((finiteNumber(previous.v, 0) + finiteNumber(point.v, 0)) / 2) * dt;
+    }
+    return { t: point.t, y: position };
+  });
 }
 
 function samplePreviewVelocity() {
