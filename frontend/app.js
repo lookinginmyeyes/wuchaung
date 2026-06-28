@@ -3992,6 +3992,8 @@ function drawSimulationCanvas(timestamp = performance.now()) {
   const run = state.simulation?.run;
   const velocityPoints = (run?.curves?.velocity || []).filter((point) => finiteNumber(point?.t) !== null && finiteNumber(point?.v) !== null);
   const positionPoints = (run?.curves?.position || []).filter((point) => finiteNumber(point?.t) !== null && finiteNumber(point?.y) !== null);
+  const liquidDepthMm = number(el.simDepthMm, null) || finiteNumber(state.simulation?.simulation?.liquid_depth_mm) || 220;
+  const liquidDepthM = Math.max(0.001, liquidDepthMm / 1000);
   if (simulationDrop.active && simulationDrop.startTime === null) simulationDrop.startTime = timestamp;
   const elapsed = simulationDrop.startTime === null ? 0 : Math.max(0, timestamp - simulationDrop.startTime);
   const dropProgress = Math.min(1, elapsed / simulationDrop.duration);
@@ -4006,7 +4008,7 @@ function drawSimulationCanvas(timestamp = performance.now()) {
   const drift = velocityPoints.length
     ? Math.min(0.1, finiteNumber(state.simulation?.simulation?.release_bias, 0) * 0.08)
     : number(el.simRelease, 0) * 0.08;
-  drawSimulationCylinder(tube, progress, drift, timestamp);
+  drawSimulationCylinder(tube, progress, drift, timestamp, liquidDepthMm);
 
   const plotArea = {
     x: Math.round(width * 0.315),
@@ -4025,6 +4027,8 @@ function drawSimulationCanvas(timestamp = performance.now()) {
   const previewVelocity = samplePreviewVelocity();
   const drawVelocity = velocityPoints.length ? velocityPoints : previewVelocity;
   const drawPosition = positionPoints.length ? positionPoints : buildPreviewPositionFromVelocity(previewVelocity);
+  const maxPositionValue = Math.max(...drawPosition.map((point) => finiteNumber(point.y, 0)), 0);
+  const maxVelocityValue = Math.max(...drawVelocity.map((point) => finiteNumber(point.v, 0)), 0.001);
   const maxT = Math.max(
     1,
     ...drawVelocity.map((p) => finiteNumber(p.t, 0)),
@@ -4036,6 +4040,8 @@ function drawSimulationCanvas(timestamp = performance.now()) {
         points: drawPosition,
         valueKey: "y",
         maxT,
+        minValueOverride: 0,
+        maxValueOverride: Math.max(liquidDepthM, maxPositionValue * 1.08),
         title: "s-t 图",
         xLabel: "时间 t / s",
         yLabel: "下落位移 s / m",
@@ -4046,6 +4052,8 @@ function drawSimulationCanvas(timestamp = performance.now()) {
         points: drawVelocity,
         valueKey: "v",
         maxT,
+        minValueOverride: 0,
+        maxValueOverride: maxVelocityValue * 1.18,
         title: "v-t 图",
         xLabel: "时间 t / s",
         yLabel: "瞬时速度 v / (m·s⁻¹)",
@@ -4074,10 +4082,10 @@ function drawSimulationCanvas(timestamp = performance.now()) {
   simCtx.restore();
 }
 
-function drawSimulationScientificPlot({ plot, points, valueKey, maxT, title, xLabel, yLabel, color }) {
+function drawSimulationScientificPlot({ plot, points, valueKey, maxT, minValueOverride = null, maxValueOverride = null, title, xLabel, yLabel, color }) {
   const values = points.map((point) => finiteNumber(point?.[valueKey], 0));
-  const minValue = Math.min(0, ...values);
-  const maxValue = Math.max(0.0001, ...values);
+  const minValue = minValueOverride ?? Math.min(0, ...values);
+  const maxValue = Math.max(0.0001, maxValueOverride ?? Math.max(...values));
   const range = Math.max(0.0001, maxValue - minValue);
   const xFor = (t) => plot.x + (finiteNumber(t, 0) / maxT) * plot.w;
   const yFor = (value) => plot.y + plot.h - ((finiteNumber(value, 0) - minValue) / range) * plot.h * 0.9 - plot.h * 0.04;
@@ -4172,7 +4180,7 @@ function samplePreviewVelocity() {
   });
 }
 
-function drawSimulationCylinder(tube, progress, drift, timestamp) {
+function drawSimulationCylinder(tube, progress, drift, timestamp, liquidDepthMm = 220) {
   const glass = {
     left: tube.x + 36,
     right: tube.x + tube.w - 36,
@@ -4218,18 +4226,23 @@ function drawSimulationCylinder(tube, progress, drift, timestamp) {
   simCtx.ellipse(centerX, liquidTop, innerWidth / 2 - 3, 10, 0, 0, Math.PI * 2);
   simCtx.stroke();
 
-  simCtx.strokeStyle = "rgba(32, 35, 31, 0.24)";
+  simCtx.strokeStyle = "rgba(32, 35, 31, 0.28)";
   simCtx.lineWidth = 1.4;
-  simCtx.font = "800 12px ui-monospace, monospace";
-  simCtx.fillStyle = "rgba(32, 35, 31, 0.52)";
-  for (let index = 0; index <= 9; index += 1) {
-    const y = glass.top + 32 + index * ((glass.bottom - glass.top - 58) / 9);
-    const longTick = index % 3 === 0;
+  simCtx.font = "800 11px ui-monospace, monospace";
+  simCtx.fillStyle = "rgba(32, 35, 31, 0.58)";
+  const safeDepthMm = Math.max(1, finiteNumber(liquidDepthMm, 220));
+  for (let index = 0; index <= 8; index += 1) {
+    const ratio = index / 8;
+    const y = liquidTop + ratio * (liquidBottom - liquidTop);
+    const longTick = index % 2 === 0;
     simCtx.beginPath();
     simCtx.moveTo(glass.right + 10, y);
     simCtx.lineTo(glass.right + (longTick ? 36 : 24), y);
     simCtx.stroke();
-    if (longTick) simCtx.fillText(`${index * 20}`, glass.right + 42, y + 4);
+    if (longTick) {
+      const depthLabel = Math.round(safeDepthMm * ratio);
+      simCtx.fillText(`${depthLabel} mm`, glass.right + 42, y + 4);
+    }
   }
 
   simCtx.strokeStyle = "rgba(35, 91, 76, 0.18)";
@@ -4283,7 +4296,7 @@ function drawSimulationCylinder(tube, progress, drift, timestamp) {
 
   simCtx.fillStyle = "#20231f";
   simCtx.font = "900 18px Avenir Next, sans-serif";
-  simCtx.fillText("平面量筒", tube.x + 16, 34);
+  simCtx.fillText(`量筒 H=${Math.round(safeDepthMm)} mm`, tube.x + 16, 34);
   simCtx.fillStyle = "rgba(106, 114, 109, 0.9)";
   simCtx.font = "800 11px Avenir Next, sans-serif";
   simCtx.fillText("小球沿中心轴下落", tube.x + 14, tube.y + tube.h - 12);
@@ -4974,7 +4987,10 @@ function bind() {
     button.addEventListener("click", () => switchView(button.dataset.goView));
   });
   [el.simRelease, el.simRefraction, el.simLighting, el.simRadiusMm, el.simTubeMm, el.simDepthMm].forEach((input) => {
-    input.addEventListener("input", updateSimulationLabels);
+    input.addEventListener("input", () => {
+      updateSimulationLabels();
+      if (!simulationDrop.active) drawSimulationCanvas();
+    });
   });
   el.simScenario.addEventListener("change", applySimulationPreset);
   el.runSimulationBtn.addEventListener("click", runSimulation);
