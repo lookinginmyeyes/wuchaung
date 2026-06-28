@@ -440,59 +440,74 @@ def build_report_text(run: dict) -> str:
     diagnostics = run["diagnostics"]
     quality = run.get("quality", {})
     preprocessing = quality.get("preprocessing", {})
+    score = student.get("score")
+    v_error = student.get("v_error")
+    eta_error = student.get("eta_error")
+    report_time = run.get("created_at") or datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    score_basis = [
+        ("人工终端速度相对偏差", format_percent(v_error), "偏差越小，说明人工计时或人工选段越接近 AI 拟合结果。"),
+        ("人工粘滞系数相对偏差", format_percent(eta_error), "偏差越小，说明人工计算链路与修正后参考结果越一致。"),
+        ("AI 拟合 R²", f"{float(result['r2']):.4f}", "越接近 1，匀速段线性越好。"),
+        ("综合评分", format_report_value(score, "分", 0), "由人工偏差与 AI 拟合质量共同决定。"),
+    ]
     lines = [
         "# 基于AI视觉的落球法液体粘滞系数智能测量系统实验报告",
         "",
-        "## 基本信息",
+        "## 1. 基本信息",
         "| 项目 | 数值 |",
-        "|---|---:|",
+        "|---|---|",
         f"| 记录ID | {run.get('id', '-')} |",
-        f"| 样本液体 | {params['liquid']} |",
-        f"| 温度 | {params['temperature_c']} ℃ |",
-        f"| 液体密度 | {params['rho_liquid']} kg/m^3 |",
+        f"| 日期时间 | {report_time} |",
+        f"| 液体种类 | {params['liquid']} |",
+        f"| 液体温度 | {params['temperature_c']} ℃ |",
+        f"| 液体密度 | {params['rho_liquid']} kg/m³ |",
         f"| 小球半径 | {params['radius_mm']} mm |",
-        f"| 小球密度 | {params['rho_ball']} kg/m^3 |",
+        f"| 小球密度 | {params['rho_ball']} kg/m³ |",
         f"| 量筒内径 | {params['tube_diameter_mm']} mm |",
         f"| 液体深度 | {params.get('liquid_depth_mm', '-')} mm |",
+        f"| 数据来源 | {run.get('source', '-')} |",
         "",
-        "## AI参考结果",
-        "| 指标 | 数值 |",
-        "|---|---:|",
-        f"| 终端速度 vt | {result['terminal_velocity']:.6f} m/s |",
-        f"| 理想公式粘滞系数 η_ideal | {result.get('ideal_viscosity', result['viscosity']):.6f} Pa·s |",
-        f"| 修正粘滞系数 η | {result['viscosity']:.6f} Pa·s |",
-        f"| 线性拟合 R² | {result['r2']:.4f} |",
-        f"| Re | {result['re']:.4f} |",
-        f"| 壁效应修正因子 | {result['wall_correction']:.4f} |",
-        f"| 追踪平均置信度 | {result['tracking_confidence'] * 100:.1f}% |",
-        f"| 相对不确定度估计 | {result['relative_uncertainty'] * 100:.2f}% |",
-        f"| 拟合方法 | {quality.get('fit_method', 'linear_fit')} |",
-        f"| 匀速段速度离散度 | {float(quality.get('uniform_segment_cv', 0)):.4f} |",
-        f"| 降权坏点数 | {int(preprocessing.get('outlier_points', 0) or 0)} |",
-        f"| 无效轨迹点数 | {int(preprocessing.get('dropped_points', 0) or 0)} |",
-        "",
-        "## 人工测量值对比",
-        "| 指标 | 人工值 | AI参考值 | 相对偏差 |",
-        "|---|---:|---:|---:|",
+        "## 2. 数据对比表",
+        "| 指标 | 人工测量值 | AI参考值 | 相对偏差 | 备注 |",
+        "|---|---:|---:|---:|---|",
         report_compare_row("终端速度 vt", student.get("student_v"), result["terminal_velocity"], "m/s", student.get("v_error")),
         report_compare_row("粘滞系数 η", student.get("student_eta"), result["viscosity"], "Pa·s", student.get("eta_error")),
-        f"| 质量评分 | {format_report_value(student.get('score'), '', 0)} | - | - |",
+        f"| 理想公式粘滞系数 η_ideal | - | {format_report_value(result.get('ideal_viscosity', result['viscosity']), 'Pa·s', 6)} | - | 未计入全部修正时的参考值 |",
+        f"| 线性拟合 R² | - | {float(result['r2']):.4f} | - | 匀速段线性拟合质量 |",
+        f"| Re | - | {float(result['re']):.4f} | - | Stokes 适用条件判据 |",
+        f"| 壁效应修正因子 K壁 | - | {float(result['wall_correction']):.4f} | - | 由小球半径、量筒内径和液体深度决定 |",
+        f"| 追踪平均置信度 | - | {float(result['tracking_confidence']) * 100:.1f}% | - | AI 视觉追踪质量 |",
         "",
-        "## 分层异常诊断",
+        "## 3. 评分结果以及依据",
+        "| 项目 | 结果 | 评分依据 |",
+        "|---|---:|---|",
+    ]
+    lines.extend(f"| {label} | {value} | {basis} |" for label, value, basis in score_basis)
+    lines.extend([
+        "",
+        "## 4. 误差分析",
+        "| 类型 | 指标或现象 | 分析 |",
+        "|---|---|---|",
+        f"| 人工测量误差 | vt 偏差 {format_percent(v_error)}；η 偏差 {format_percent(eta_error)} | 若偏差较大，优先检查人工计时、人工选段、读数反应延迟和计算单位。 |",
+        f"| AI拟合误差 | R²={float(result['r2']):.4f}；匀速段速度离散度={float(quality.get('uniform_segment_cv', 0)):.4f} | R² 偏低或速度离散度偏大时，说明匀速段不稳定或轨迹噪声较大。 |",
+        f"| 视觉追踪误差 | 平均置信度 {float(result['tracking_confidence']) * 100:.1f}%；降权坏点 {int(preprocessing.get('outlier_points', 0) or 0)}；无效点 {int(preprocessing.get('dropped_points', 0) or 0)} | 气泡、划痕、阴影、曝光过高或检测区域过大都可能造成误识别。 |",
+        f"| 物理模型误差 | Re={float(result['re']):.4f}；K壁={float(result['wall_correction']):.4f} | Re 偏高或壁效应修正较大时，Stokes 条件偏离更明显。 |",
+        "",
+        "## 5. 改进建议",
         "| 等级 | 诊断项 | 建议 |",
         "|---|---|---|",
-    ]
+    ])
     for item in diagnostics:
         lines.append(f"| {item['level']} | {item['title']} | {item['message']} |")
     lines.append("")
-    lines.append("说明: 当前报告用于辅助复盘和软件链路验证，不替代学生实验操作、原始记录、误差分析和物理结论；真实物理精度需要接入固定机位、标定板、透明容器和实际落球视频后验证。")
+    lines.append("说明：评分报告用于辅助复盘，不替代原始实验记录。最终结论仍应结合释放质量、标定质量、背光条件、人工测量过程和 Stokes 适用条件综合判断。")
     return "\n".join(lines)
 
 
 def report_compare_row(label: str, student_value, ai_value, unit: str, relative_error) -> str:
     return (
         f"| {label} | {format_report_value(student_value, unit, 6)} | "
-        f"{format_report_value(ai_value, unit, 6)} | {format_percent(relative_error)} |"
+        f"{format_report_value(ai_value, unit, 6)} | {format_percent(relative_error)} | 人工输入与 AI 参考结果对比 |"
     )
 
 
