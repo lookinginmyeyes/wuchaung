@@ -4145,15 +4145,15 @@ input[type="range"]:focus-visible {
 }
 
 .simulation-control-panel .section-title h2 {
-  font-size: clamp(18px, 1.35vw, 22px);
-  line-height: 1.14;
+  font-size: clamp(30px, 2.4vw, 40px);
+  line-height: 1.02;
   white-space: nowrap;
 }
 
 .simulation-advice-head {
   display: grid;
-  grid-template-columns: minmax(104px, 1fr) minmax(132px, 0.36fr);
-  gap: 14px;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
   align-items: start;
 }
 
@@ -4170,11 +4170,13 @@ input[type="range"]:focus-visible {
 }
 
 .simulation-run-module {
-  justify-self: end;
+  justify-self: stretch;
   display: grid;
   align-content: start;
   gap: 6px;
   width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
   min-height: 96px;
   padding: 12px;
   border-radius: 14px;
@@ -4200,10 +4202,12 @@ input[type="range"]:focus-visible {
 }
 
 .simulation-run-module strong {
+  min-width: 0;
   color: var(--accent-dark);
-  font-size: 18px;
+  font-size: clamp(16px, 1.35vw, 18px);
   font-weight: 950;
   line-height: 1.1;
+  overflow-wrap: anywhere;
 }
 
 .simulation-run-module small {
@@ -4441,8 +4445,8 @@ input[type="range"]:focus-visible {
   }
 
   .simulation-run-module {
-    grid-template-columns: minmax(92px, auto) minmax(0, 1fr) auto;
-    align-items: center;
+    grid-template-columns: 1fr;
+    align-items: start;
     justify-self: stretch;
     min-height: 0;
     padding: 10px;

@@ -3994,8 +3994,11 @@ function drawSimulationCanvas(timestamp = performance.now()) {
   const drawPosition = positionPoints.length ? positionPoints : buildPreviewPositionFromVelocity(previewVelocity);
   const maxPositionValue = Math.max(...drawPosition.map((point) => finiteNumber(point.y, 0)), 0);
   const maxVelocityValue = Math.max(...drawVelocity.map((point) => finiteNumber(point.v, 0)), 0.001);
+  const simulatedFallTime = finiteNumber(state.simulation?.simulation?.fall_time_s);
+  const previewFallTime = estimatePreviewFallTime(liquidDepthM, maxVelocityValue);
   const maxT = Math.max(
-    1,
+    0.7,
+    simulatedFallTime ?? previewFallTime,
     ...drawVelocity.map((p) => finiteNumber(p.t, 0)),
     ...drawPosition.map((p) => finiteNumber(p.t, 0)),
   );
@@ -4130,6 +4133,12 @@ function buildPreviewPositionFromVelocity(points) {
     }
     return { t: point.t, y: position };
   });
+}
+
+function estimatePreviewFallTime(liquidDepthM, terminalVelocity) {
+  const safeDepth = Math.max(0.001, finiteNumber(liquidDepthM, 0.22));
+  const safeVelocity = Math.max(0.001, finiteNumber(terminalVelocity, 0.08));
+  return Math.min(60, Math.max(0.7, safeDepth / safeVelocity + 0.35));
 }
 
 function samplePreviewVelocity() {

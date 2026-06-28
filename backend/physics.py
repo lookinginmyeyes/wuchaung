@@ -467,10 +467,30 @@ def build_simulation(payload: dict) -> dict:
     simulated = terminal_velocity_from_viscosity(params, params.eta_reference)
     terminal_velocity = simulated["terminal_velocity"]
     trajectory = []
-    dt = 0.035
     tau = 0.18 + effective_release * 0.11
+    liquid_depth_m = params.liquid_depth_mm / 1000
+    fall_time_s = max(0.7, liquid_depth_m / max(terminal_velocity, 1e-6) + tau)
+    high = max(fall_time_s, tau * 4)
+    for _ in range(24):
+        y_high = terminal_velocity * (high - tau * (1 - math.exp(-high / tau)))
+        if y_high >= liquid_depth_m:
+            break
+        high *= 1.45
+        if high > 60:
+            break
+    low = 0.0
+    for _ in range(48):
+        mid = (low + high) / 2
+        y_mid = terminal_velocity * (mid - tau * (1 - math.exp(-mid / tau)))
+        if y_mid >= liquid_depth_m:
+            high = mid
+        else:
+            low = mid
+    fall_time_s = min(max(high, 0.7), 60.0)
+    sample_count = max(96, min(240, int(fall_time_s / 0.035) + 1))
+    dt = fall_time_s / max(sample_count - 1, 1)
     lateral_bias = (tube_ratio * 0.34) + (effective_release * 0.17)
-    for index in range(96):
+    for index in range(sample_count):
         t = round(index * dt, 4)
         ideal_y = terminal_velocity * (t - tau * (1 - math.exp(-t / tau)))
         wave = math.sin(index * 0.43) * effective_damping_noise * 0.0015
@@ -484,7 +504,7 @@ def build_simulation(payload: dict) -> dict:
         trajectory.append(
             {
                 "t": t,
-                "y": round(max(0.0, ideal_y + wave + shimmer + release_kick), 6),
+                "y": round(min(liquid_depth_m, max(0.0, ideal_y + wave + shimmer + release_kick)), 6),
                 "x": round(max(0.05, min(0.95, 0.5 + drift)), 5),
                 "confidence": round(confidence, 4),
             }
@@ -546,6 +566,7 @@ def build_simulation(payload: dict) -> dict:
             "lighting": effective_stability,
             "known_liquid": preset["liquid"],
             "known_eta": params.eta_reference,
+            "fall_time_s": fall_time_s,
             "wall_correction": simulated["wall_correction"],
             "reynolds_correction": simulated["reynolds_correction"],
             "correction_total": simulated["correction_total"],
