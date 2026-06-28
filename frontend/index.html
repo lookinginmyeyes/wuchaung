@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>落球法测液体粘滞系数实验 AI 学习平台</title>
     <link rel="icon" href="./assets/generated/icons/calibration.png" />
-    <link rel="stylesheet" href="./styles.css?v=high-fps-sim-curves-v104" />
+    <link rel="stylesheet" href="./styles.css?v=sim-chart-tabs-v105" />
   </head>
   <body>
     <div class="app-shell">
@@ -960,10 +960,20 @@
                 <div class="section-title">
                   <div>
                     <p class="eyebrow">仿真曲线</p>
-                    <h2>小球位移与速度曲线</h2>
+                    <h2>s-t / v-t 图</h2>
                   </div>
                 </div>
-                <canvas id="simulationCanvas" width="900" height="560" aria-label="虚拟落球仿真画面"></canvas>
+                <div class="chart-tabs simulation-chart-tabs" aria-label="虚拟仿真曲线切换">
+                  <button class="active" data-sim-chart="position" type="button">
+                    <img src="./assets/generated/buttons/position-curve.png" alt="" />
+                    <span>s-t 图</span>
+                  </button>
+                  <button data-sim-chart="velocity" type="button">
+                    <img src="./assets/generated/buttons/velocity-curve.png" alt="" />
+                    <span>v-t 图</span>
+                  </button>
+                </div>
+                <canvas id="simulationCanvas" width="1040" height="604" aria-label="虚拟落球仿真画面"></canvas>
                 <div class="metric-grid compact simulation-metrics">
                   <article class="metric primary">
                     <span>终端速度 vt</span>
@@ -1192,6 +1202,6 @@
     </div>
 
     <div id="toast" class="toast"></div>
-    <script src="./app.js?v=high-fps-sim-curves-v104"></script>
+    <script src="./app.js?v=sim-chart-tabs-v105"></script>
   </body>
 </html>

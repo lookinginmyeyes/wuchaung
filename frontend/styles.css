@@ -2994,7 +2994,7 @@ input[type="range"]:focus-visible {
 }
 
 .simulation-layout {
-  grid-template-columns: minmax(270px, 0.34fr) minmax(520px, 1fr) minmax(280px, 0.36fr);
+  grid-template-columns: minmax(250px, 0.28fr) minmax(660px, 1.2fr) minmax(250px, 0.3fr);
   grid-template-areas: "sim-controls sim-scene sim-feedback";
   gap: clamp(14px, 1.4vw, 22px);
   align-items: start;
@@ -4248,12 +4248,22 @@ input[type="range"]:focus-visible {
 
 #simulationCanvas {
   width: 100%;
-  margin-top: 14px;
-  aspect-ratio: 1.61 / 1;
+  margin-top: 10px;
+  aspect-ratio: 1.72 / 1;
   border-radius: 16px;
   border: 1px solid rgba(217, 221, 213, 0.92);
   background: #fbfcfa;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}
+
+.simulation-chart-tabs {
+  margin-top: 12px;
+  justify-content: flex-start;
+}
+
+.simulation-chart-tabs button {
+  min-height: 38px;
+  padding: 8px 14px;
 }
 
 .simulation-metrics .metric strong {

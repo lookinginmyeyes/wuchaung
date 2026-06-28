@@ -78,6 +78,7 @@ const state = {
   manualZoomActive: false,
   manualZoomScale: 1,
   manualZoomOrigin: { x: 50, y: 50 },
+  simulationChartMode: "position",
   accessGranted: false,
   examStarted: false,
   lectureStarted: false,
@@ -3886,7 +3887,7 @@ function renderSimulation(result) {
   const correctionTotal = finiteNumber(sim.correction_total);
   const rubric = Array.isArray(sim.rubric) ? sim.rubric : [];
 
-  if (el.simulationStatus) el.simulationStatus.textContent = "已输出速度";
+  if (el.simulationStatus) el.simulationStatus.textContent = "已输出曲线";
   const terminalVelocityText = `${terminalVelocity.toFixed(4)} m/s`;
   el.simVt.textContent = terminalVelocityText;
   el.simEta.textContent = `${knownEta < 0.01 ? knownEta.toFixed(6) : knownEta.toFixed(3)} Pa·s`;
@@ -3995,24 +3996,31 @@ function drawSimulationCanvas(timestamp = performance.now()) {
   const elapsed = simulationDrop.startTime === null ? 0 : Math.max(0, timestamp - simulationDrop.startTime);
   const dropProgress = Math.min(1, elapsed / simulationDrop.duration);
   const easedDropProgress = 1 - Math.pow(1 - dropProgress, 3);
-  const tube = { x: 72, y: 46, w: 212, h: 458 };
+  const tube = {
+    x: Math.round(width * 0.055),
+    y: Math.round(height * 0.12),
+    w: Math.round(width * 0.17),
+    h: Math.round(height * 0.72),
+  };
   const progress = simulationDrop.active ? easedDropProgress : simulationDrop.completed ? 1 : 0;
   const drift = velocityPoints.length
     ? Math.min(0.1, finiteNumber(state.simulation?.simulation?.release_bias, 0) * 0.08)
     : number(el.simRelease, 0) * 0.08;
   drawSimulationCylinder(tube, progress, drift, timestamp);
 
-  const plotArea = { x: 330, y: 58, w: 528, h: 438 };
-  const positionPlot = { x: plotArea.x, y: plotArea.y + 30, w: plotArea.w, h: 170 };
-  const velocityPlot = { x: plotArea.x, y: plotArea.y + 254, w: plotArea.w, h: 170 };
+  const plotArea = {
+    x: Math.round(width * 0.315),
+    y: Math.round(height * 0.11),
+    w: Math.round(width * 0.635),
+    h: Math.round(height * 0.74),
+  };
+  const plot = { x: plotArea.x + 86, y: plotArea.y + 44, w: plotArea.w - 106, h: plotArea.h - 102 };
   simCtx.save();
   simCtx.fillStyle = "#20231f";
-  simCtx.font = "900 22px Avenir Next, sans-serif";
+  simCtx.font = "900 20px Avenir Next, sans-serif";
   simCtx.textAlign = "left";
-  simCtx.fillText("s(t) 与 v(t) 科研坐标曲线", plotArea.x, 36);
-  simCtx.fillStyle = "rgba(106, 114, 109, 0.92)";
-  simCtx.font = "800 13px Avenir Next, sans-serif";
-  simCtx.fillText(velocityPoints.length ? "后端已输出位移-时间与速度-时间数据" : "调节液体和容器参数后运行仿真", plotArea.x + 268, 36);
+  const chartMode = state.simulationChartMode === "velocity" ? "velocity" : "position";
+  simCtx.fillText(chartMode === "position" ? "s-t 图" : "v-t 图", plotArea.x, 42);
 
   const previewVelocity = samplePreviewVelocity();
   const drawVelocity = velocityPoints.length ? velocityPoints : previewVelocity;
@@ -4022,28 +4030,29 @@ function drawSimulationCanvas(timestamp = performance.now()) {
     ...drawVelocity.map((p) => finiteNumber(p.t, 0)),
     ...drawPosition.map((p) => finiteNumber(p.t, 0)),
   );
-  drawSimulationScientificPlot({
-    plot: positionPlot,
-    points: drawPosition,
-    valueKey: "y",
-    maxT,
-    title: "位移-时间曲线",
-    xLabel: "时间 t / s",
-    yLabel: "下落位移 s / m",
-    color: positionPoints.length ? "#327a66" : "rgba(50, 122, 102, 0.48)",
-  });
-  const velocityScale = drawSimulationScientificPlot({
-    plot: velocityPlot,
-    points: drawVelocity,
-    valueKey: "v",
-    maxT,
-    title: "速度-时间曲线",
-    xLabel: "时间 t / s",
-    yLabel: "瞬时速度 v / (m·s⁻¹)",
-    color: velocityPoints.length ? "#a26025" : "rgba(162, 96, 37, 0.48)",
-  });
+  const scale = chartMode === "position"
+    ? drawSimulationScientificPlot({
+        plot,
+        points: drawPosition,
+        valueKey: "y",
+        maxT,
+        title: "s-t 图",
+        xLabel: "时间 t / s",
+        yLabel: "下落位移 s / m",
+        color: positionPoints.length ? "#327a66" : "rgba(50, 122, 102, 0.48)",
+      })
+    : drawSimulationScientificPlot({
+        plot,
+        points: drawVelocity,
+        valueKey: "v",
+        maxT,
+        title: "v-t 图",
+        xLabel: "时间 t / s",
+        yLabel: "瞬时速度 v / (m·s⁻¹)",
+        color: velocityPoints.length ? "#a26025" : "rgba(162, 96, 37, 0.48)",
+      });
 
-  if (velocityPoints.length) {
+  if (chartMode === "velocity" && velocityPoints.length) {
     const terminalVelocity = finiteNumber(state.simulation?.run?.result?.terminal_velocity);
     if (terminalVelocity === null) {
       simCtx.restore();
@@ -4051,16 +4060,16 @@ function drawSimulationCanvas(timestamp = performance.now()) {
     }
     simCtx.strokeStyle = "rgba(50, 122, 102, 0.44)";
     simCtx.setLineDash([8, 8]);
-    const vtY = velocityScale.yFor(terminalVelocity);
+    const vtY = scale.yFor(terminalVelocity);
     simCtx.beginPath();
-    simCtx.moveTo(velocityPlot.x, vtY);
-    simCtx.lineTo(velocityPlot.x + velocityPlot.w, vtY);
+    simCtx.moveTo(plot.x, vtY);
+    simCtx.lineTo(plot.x + plot.w, vtY);
     simCtx.stroke();
     simCtx.setLineDash([]);
     simCtx.fillStyle = "#235b4c";
     simCtx.font = "900 12px ui-monospace, monospace";
     simCtx.textAlign = "right";
-    simCtx.fillText(`v_t = ${terminalVelocity.toFixed(4)} m·s⁻¹`, velocityPlot.x + velocityPlot.w - 4, vtY - 8);
+    simCtx.fillText(`v_t = ${terminalVelocity.toFixed(4)} m·s⁻¹`, plot.x + plot.w - 4, vtY - 8);
   }
   simCtx.restore();
 }
@@ -4123,14 +4132,14 @@ function drawSimulationScientificPlot({ plot, points, valueKey, maxT, title, xLa
   simCtx.stroke();
 
   simCtx.fillStyle = "rgba(32, 35, 31, 0.78)";
-  simCtx.font = "900 12px system-ui";
+  simCtx.font = "900 14px system-ui";
   simCtx.textAlign = "left";
-  simCtx.fillText(title, plot.x, plot.y - 13);
-  simCtx.font = "800 10px system-ui";
+  simCtx.fillText(title, plot.x, plot.y - 18);
+  simCtx.font = "800 12px system-ui";
   simCtx.textAlign = "center";
-  simCtx.fillText(xLabel, plot.x + plot.w / 2, plot.y + plot.h + 34);
+  simCtx.fillText(xLabel, plot.x + plot.w / 2, plot.y + plot.h + 42);
   simCtx.save();
-  simCtx.translate(plot.x - 52, plot.y + plot.h / 2);
+  simCtx.translate(plot.x - 62, plot.y + plot.h / 2);
   simCtx.rotate(-Math.PI / 2);
   simCtx.fillText(yLabel, 0, 0);
   simCtx.restore();
@@ -4969,6 +4978,15 @@ function bind() {
   });
   el.simScenario.addEventListener("change", applySimulationPreset);
   el.runSimulationBtn.addEventListener("click", runSimulation);
+  document.querySelectorAll("[data-sim-chart]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.simulationChartMode = button.dataset.simChart === "velocity" ? "velocity" : "position";
+      document.querySelectorAll("[data-sim-chart]").forEach((item) => {
+        item.classList.toggle("active", item === button);
+      });
+      drawSimulationCanvas();
+    });
+  });
   el.sendSimulationToWorkbenchBtn.addEventListener("click", sendSimulationToWorkbench);
 }
 
