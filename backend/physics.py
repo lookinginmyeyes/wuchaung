@@ -434,15 +434,26 @@ def build_simulation(payload: dict) -> dict:
     initial_disturbance = max(0.0, min(1.0, float(payload.get("release_bias", 0.0))))
     damping_disturbance = max(0.0, min(1.0, float(payload.get("refraction", 0.0))))
     sampling_stability = max(0.2, min(1.0, float(payload.get("lighting", 1.0))))
-    radius_mm = max(0.8, min(3.5, float(payload.get("radius_mm", 1.5))))
-    tube_diameter_mm = max(0.1, min(80.0, float(payload.get("tube_diameter_mm", 35.0))))
-    liquid_depth_mm = min(500.0, float(payload.get("liquid_depth_mm", 220.0)))
+    try:
+        radius_mm = float(payload.get("radius_mm", 1.5))
+        tube_diameter_mm = float(payload.get("tube_diameter_mm", 35.0))
+        liquid_depth_mm = float(payload.get("liquid_depth_mm", 220.0))
+    except (TypeError, ValueError):
+        raise ValueError("无法模拟：小球半径、量筒内径和待测液体深度必须是有效数字。")
+    if radius_mm <= 0:
+        raise ValueError("无法模拟：小球半径 r 必须大于 0 mm。")
+    if tube_diameter_mm <= 0:
+        raise ValueError("无法模拟：量筒内径 D 必须大于 0 mm。")
     if liquid_depth_mm <= 0:
         raise ValueError("无法模拟：待测液体深度 H 必须大于 0 mm。")
     tube_ratio = (2 * radius_mm) / tube_diameter_mm
     if tube_ratio >= 1:
         raise ValueError(
             f"无法模拟：小球直径 2r={2 * radius_mm:.1f} mm，量筒内径 D={tube_diameter_mm:.1f} mm，2r/D={tube_ratio:.3f} ≥ 1。小球直径已大于或等于量筒内径，请增大量筒内径或减小小球半径。"
+        )
+    if 2 * radius_mm >= liquid_depth_mm:
+        raise ValueError(
+            f"无法模拟：小球直径 2r={2 * radius_mm:.1f} mm 已大于或等于待测液体深度 H={liquid_depth_mm:.1f} mm，无法形成有效下落区间。"
         )
 
     preset = SIMULATION_LIQUID_PRESETS.get(scenario, SIMULATION_LIQUID_PRESETS["standard"])
@@ -465,6 +476,9 @@ def build_simulation(payload: dict) -> dict:
     depth_ratio = params.radius_mm / params.liquid_depth_mm
     min_practical_depth_mm = max(80.0, params.radius_mm * 12)
     simulated = terminal_velocity_from_viscosity(params, params.eta_reference)
+    tube_level = "ok" if tube_ratio < 0.12 else "warn" if tube_ratio < 0.25 else "danger"
+    reynolds_level = "ok" if simulated["re"] < 1 else "warn" if simulated["re"] < 5 else "danger"
+    depth_level = "ok" if depth_ratio < 0.012 else "danger" if params.liquid_depth_mm < min_practical_depth_mm else "warn"
     terminal_velocity = simulated["terminal_velocity"]
     trajectory = []
     tau = 0.18 + effective_release * 0.11
@@ -521,8 +535,22 @@ def build_simulation(payload: dict) -> dict:
         - max(0, depth_ratio - 0.012) * 520
         - max(0, simulated["re"] - 1) * 12
     )
+    if tube_level == "warn":
+        risk_score = min(risk_score, 80.0)
+    elif tube_level == "danger":
+        risk_score = min(risk_score, 58.0)
+    if reynolds_level == "warn":
+        risk_score = min(risk_score, 80.0)
+    elif reynolds_level == "danger":
+        risk_score = min(risk_score, 58.0)
+    if depth_level == "warn":
+        risk_score = min(risk_score, 80.0)
+    elif depth_level == "danger":
+        risk_score = min(risk_score, 58.0)
     risk_score = max(36.0, min(96.0, risk_score))
-    risk_label = "低风险" if risk_score >= 82 else "需复核" if risk_score >= 66 else "高风险"
+    has_danger = "danger" in {tube_level, reynolds_level, depth_level}
+    has_warn = "warn" in {tube_level, reynolds_level, depth_level}
+    risk_label = "高风险" if has_danger or risk_score < 66 else "需复核" if has_warn or risk_score < 82 else "低风险"
     rubric = [
         {
             "level": "ok" if effective_release < 0.28 else "warn",
@@ -535,17 +563,25 @@ def build_simulation(payload: dict) -> dict:
             "message": "速度采样稳定，终端速度平台较容易观察。" if effective_damping_noise < 0.45 else "速度曲线扰动较大，建议在仿真中对比平滑前后的终端速度估计。",
         },
         {
-            "level": "ok" if tube_ratio < 0.12 else "warn",
+            "level": tube_level,
             "title": "容器边界",
-            "message": f"2r/D={tube_ratio:.3f}，K壁={simulated['wall_correction']:.3f}，壁效应修正已纳入。" if tube_ratio < 0.12 else f"2r/D={tube_ratio:.3f}，K壁={simulated['wall_correction']:.3f}，建议更大容器或更小球。",
+            "message": (
+                f"2r/D={tube_ratio:.3f}，K壁={simulated['wall_correction']:.3f}，壁效应修正已纳入。"
+                if tube_level == "ok"
+                else f"2r/D={tube_ratio:.3f}，K壁={simulated['wall_correction']:.3f}，球筒径比过大，容器边界效应已明显超出低风险范围；建议更大容器或更小球。"
+            ),
         },
         {
-            "level": "ok" if simulated["re"] < 1 else "warn",
+            "level": reynolds_level,
             "title": "雷诺数修正",
-            "message": f"Re={simulated['re']:.3f}，KRe={simulated['reynolds_correction']:.3f}，二级修正项已参与迭代。" if simulated["re"] < 1 else f"Re={simulated['re']:.3f}，已偏离低雷诺数区，建议提高粘度或减小小球半径。",
+            "message": (
+                f"Re={simulated['re']:.3f}，KRe={simulated['reynolds_correction']:.3f}，二级修正项已参与迭代。"
+                if reynolds_level == "ok"
+                else f"Re={simulated['re']:.3f}，已偏离 Re<1 的低雷诺数适用区；建议提高粘度、减小小球半径或降低下落速度。"
+            ),
         },
         {
-            "level": "ok" if depth_ratio < 0.012 else "danger" if params.liquid_depth_mm < min_practical_depth_mm else "warn",
+            "level": depth_level,
             "title": "液体深度",
             "message": (
                 f"H={params.liquid_depth_mm:.0f} mm，r/H={depth_ratio:.4f}，端部深度修正较小。"
