@@ -984,6 +984,33 @@ def latest_measurement_text(latest: dict | None) -> str:
     return f"最近一次测量：vt={result['terminal_velocity']:.4f} m/s，η={result['viscosity']:.3f} Pa·s，R²={result['r2']:.3f}，Re={result['re']:.3f}。"
 
 
+def local_quiz_tutor_answer(context: dict | None) -> str | None:
+    if not isinstance(context, dict) or not str(context.get("kind", "")).startswith("quiz"):
+        return None
+    quiz = context.get("quiz") or {}
+    if isinstance(quiz, dict) and "items" in quiz:
+        wrong = [item for item in quiz.get("items", []) if not item.get("correct")]
+        if not wrong:
+            return "这次预习作业全部答对。先别急着跳过复盘：你可以再问自己两个问题，终端速度为什么必须来自稳定平台段？Re 和壁效应分别在限制什么？如果这两个问题能说清楚，就可以进入实验。"
+        focus = wrong[0]
+        return (
+            f"这次主要需要回看第 {focus.get('index')} 题附近的知识点。"
+            f"你选的是“{focus.get('selectedText', '未作答')}”，标准答案指向“{focus.get('answerText', '')}”。"
+            "先想一个问题：这道题考的是实验操作顺序、物理适用条件，还是数据复核？"
+            "把这个考点定位出来，再回到讲义对应段落重读一遍。"
+        )
+    if isinstance(quiz, dict) and quiz.get("title"):
+        selected = quiz.get("selectedText") or "未作答"
+        answer = quiz.get("answerText") or "标准答案"
+        title = quiz.get("title")
+        return (
+            f"我们只看这道题：{title}。你当前选择是“{selected}”，标准答案是“{answer}”。"
+            "先别背答案，先问自己：这个选项是否满足落球法的核心条件，比如终端匀速、低 Re、中心线标定或壁效应控制？"
+            "如果你的选项忽略了这些条件，它就很可能只是看起来合理，但不符合实验判据。"
+        )
+    return None
+
+
 def local_answer_question(question: str, latest: dict | None) -> str:
     if not is_experiment_related_question(question):
         return "这个问题与落球法测粘、AI视觉测量、虚拟仿真、讲义、试题解析或实验误差分析无关，我不能在本系统中回答。"
@@ -1030,25 +1057,40 @@ def extract_chat_completion_text(payload: dict) -> str:
     return ""
 
 
-def answer_question_online(question: str, latest: dict | None) -> dict | None:
+def quiz_tutor_system_prompt(context: dict | None = None) -> str:
+    if not isinstance(context, dict) or not str(context.get("kind", "")).startswith("quiz"):
+        return (
+            "你是一个中学/大学物理实验教师，只回答落球法测量液体粘滞系数、AI视觉测量、"
+            "虚拟仿真、实验讲义、试题解析和误差分析相关问题。若问题无关，直接拒答。"
+            "回答要先给结论，再给公式、原因和实验建议。"
+        )
+    return (
+        "你是落球法 AI 实验平台的预习作业问答 agent。你的任务不是直接替学生背答案，"
+        "而是根据学生在每道题上的真实选择进行针对性辅导。必须采用苏格拉底式教学："
+        "先指出学生选择暴露出的概念卡点，再提出2到4个短问题引导学生自己修正。"
+        "如果学生问错题，必须结合题目、学生所选选项、正确选项和讲义知识点说明。"
+        "不要展开成长篇条列，不要一次性把所有错题铺开；回答要短、具体、可追问。"
+        "只回答落球法、Stokes 定律、终端速度、雷诺数、壁效应、标定、背光成像、AI视觉测量、误差分析和本次试题相关内容。"
+        "最后给一个可执行的复习动作，例如回看讲义中的某个条件、画出受力平衡、检查 v-t 图平台段。"
+    )
+
+
+def answer_question_online(question: str, latest: dict | None, context: dict | None = None) -> dict | None:
     api_key = os.environ.get("ARK_API_KEY", "f8591ebf-5301-4922-ae6f-c1eb942643e5")
     base_url = os.environ.get("ARK_BASE_URL", "https://ark.cn-beijing.volces.com/api/coding/v3")
     model = os.environ.get("ARK_MODEL", "ark-code-latest")
-    context = latest_measurement_text(latest) if wants_run_context(question) else "学生当前在预习或答疑阶段，未必需要结合本次测量数据。"
+    measurement_context = latest_measurement_text(latest) if wants_run_context(question) else "学生当前在预习或答疑阶段，未必需要结合本次测量数据。"
+    tutor_context = json.dumps(context, ensure_ascii=False, indent=2) if isinstance(context, dict) else "无单题上下文。"
     body = {
         "model": model,
         "messages": [
             {
                 "role": "system",
-                "content": (
-                    "你是一个中学/大学物理实验教师，只回答落球法测量液体粘滞系数、AI视觉测量、"
-                    "虚拟仿真、实验讲义、试题解析和误差分析相关问题。若问题无关，直接拒答。"
-                    "回答要先给结论，再给公式、原因和实验建议。"
-                ),
+                "content": quiz_tutor_system_prompt(context),
             },
             {
                 "role": "user",
-                "content": f"问题：{question}\n实验上下文：{context}",
+                "content": f"问题：{question}\n实验上下文：{measurement_context}\n作业/题目上下文：{tutor_context}",
             },
         ],
     }
@@ -1072,14 +1114,18 @@ def answer_question_online(question: str, latest: dict | None) -> dict | None:
     return {"answer": answer, "mode": "online", "sources": []}
 
 
-def answer_question(question: str, latest: dict | None) -> dict:
-    if not is_experiment_related_question(question):
+def answer_question(question: str, latest: dict | None, context: dict | None = None) -> dict:
+    has_quiz_context = isinstance(context, dict) and str(context.get("kind", "")).startswith("quiz")
+    if not has_quiz_context and not is_experiment_related_question(question):
         return {
             "answer": "这个问题与落球法测粘、AI视觉测量、虚拟仿真、讲义、试题解析或实验误差分析无关，我不能在本系统中回答。",
             "mode": "guarded",
             "sources": [],
         }
-    online = answer_question_online(question, latest)
+    online = answer_question_online(question, latest, context)
     if online:
         return online
+    local_quiz = local_quiz_tutor_answer(context)
+    if local_quiz:
+        return {"answer": local_quiz, "mode": "local", "sources": []}
     return {"answer": local_answer_question(question, latest), "mode": "local", "sources": []}

@@ -84,6 +84,9 @@ const state = {
   lectureStarted: false,
   lectureRead: false,
   simulation: null,
+  quizAnswers: {},
+  quizTutorContext: null,
+  quizDialogQuestion: null,
 };
 
 const el = {
@@ -105,6 +108,14 @@ const el = {
   quizTutorChat: document.getElementById("quizTutorChat"),
   quizTutorForm: document.getElementById("quizTutorForm"),
   quizTutorInput: document.getElementById("quizTutorInput"),
+  quizQuestionDialog: document.getElementById("quizQuestionDialog"),
+  quizDialogMeta: document.getElementById("quizDialogMeta"),
+  quizDialogTitle: document.getElementById("quizDialogTitle"),
+  quizDialogContext: document.getElementById("quizDialogContext"),
+  quizDialogChat: document.getElementById("quizDialogChat"),
+  quizDialogForm: document.getElementById("quizDialogForm"),
+  quizDialogInput: document.getElementById("quizDialogInput"),
+  closeQuizDialogBtn: document.getElementById("closeQuizDialogBtn"),
   submitQuizBtn: document.getElementById("submitQuizBtn"),
   skipQuizBtn: document.getElementById("skipQuizBtn"),
   retryQuizBtn: document.getElementById("retryQuizBtn"),
@@ -273,7 +284,6 @@ const el = {
   simRe: document.getElementById("simRe"),
   simWallCorrection: document.getElementById("simWallCorrection"),
   simReCorrection: document.getElementById("simReCorrection"),
-  simCorrectionTotal: document.getElementById("simCorrectionTotal"),
   simFeedbackState: document.getElementById("simFeedbackState"),
   simFeedbackVt: document.getElementById("simFeedbackVt"),
   simulationRubric: document.getElementById("simulationRubric"),
@@ -3690,8 +3700,13 @@ function renderQuizQuestions() {
     }
 
     const fieldset = document.createElement("fieldset");
+    fieldset.dataset.quizKey = question.key;
     const legend = document.createElement("legend");
-    legend.innerHTML = `<span>第 ${index + 1} 题 · ${question.type} · ${question.points} 分</span>${question.title}`;
+    legend.innerHTML = `
+      <span>第 ${index + 1} 题 · ${question.type} · ${question.points} 分</span>
+      <button class="quiz-question-help" type="button" data-quiz-help="${question.key}">问这题</button>
+      ${question.title}
+    `;
     fieldset.appendChild(legend);
 
     Object.entries(question.options).forEach(([value, label]) => {
@@ -3746,6 +3761,75 @@ function renderAssistantAnswer(message, data) {
   message.appendChild(sources);
 }
 
+function quizOptionText(item, value) {
+  return item?.options?.[value] || (value ? `选项 ${value}` : "未作答");
+}
+
+function quizQuestionContext(questionKey) {
+  const index = quizQuestions.findIndex((item) => item.key === questionKey);
+  const item = quizQuestions[index];
+  if (!item) return null;
+  const selected = state.quizAnswers[item.key] || new FormData(el.quizForm).get(item.key);
+  return {
+    key: item.key,
+    index: index + 1,
+    module: item.module,
+    type: item.type,
+    points: item.points,
+    title: item.title,
+    options: item.options,
+    selected,
+    selectedText: quizOptionText(item, selected),
+    answer: item.answer,
+    answerText: quizOptionText(item, item.answer),
+    correct: selected === item.answer,
+    explanation: item.explanation,
+  };
+}
+
+function quizSubmissionContext(formData, score) {
+  const items = quizQuestions.map((item) => {
+    const selected = formData.get(item.key);
+    return {
+      ...quizQuestionContext(item.key),
+      selected,
+      selectedText: quizOptionText(item, selected),
+      correct: selected === item.answer,
+    };
+  });
+  return {
+    score,
+    total: 100,
+    passScore: quizPassScore,
+    answered: items.length,
+    wrongCount: items.filter((item) => !item.correct).length,
+    items,
+  };
+}
+
+function quizTutorPrompt(question, context) {
+  return [
+    "你是落球法 AI 实验平台的预习作业问答 agent。",
+    "教学方式：采用苏格拉底式引导，不直接展开长篇标准答案；先指出学生当前理解卡点，再用 2-4 个短问题引导学生自己修正。",
+    "回答边界：只围绕本实验讲义、落球法、Stokes 条件、终端速度、Re、壁效应、标定、背光成像、AI 视觉测量、误差分析和试题本身。",
+    "输出要求：中文；短段落；不要使用展开式长清单；如果是错题，必须结合学生实际选择说明为什么这个选择暴露了什么误解；最后给一个可操作的复习动作。",
+    `学生问题：${question}`,
+    `上下文：${JSON.stringify(context || {}, null, 2)}`,
+  ].join("\n");
+}
+
+function renderQuizQuestionContext(context) {
+  if (!context) return "";
+  return `
+    <article class="${context.correct ? "is-correct" : "is-wrong"}">
+      <span>第 ${context.index} 题 · ${context.module}</span>
+      <strong>${escapeHtml(context.title)}</strong>
+      <p><b>学生选择：</b>${escapeHtml(context.selectedText)}</p>
+      <p><b>标准答案：</b>${escapeHtml(context.answerText)}</p>
+    </article>
+  `;
+}
+
 function renderQuizTutorFeedback(formData, score) {
   const wrongItems = quizQuestions
     .map((item, index) => {
@@ -3757,49 +3841,74 @@ function renderQuizTutorFeedback(formData, score) {
 
   el.quizTutorPanel.hidden = false;
   el.quizTutorChat.innerHTML = "";
+  state.quizTutorContext = quizSubmissionContext(formData, score);
   if (!wrongItems.length) {
     el.quizTutorSummary.innerHTML = `
       <strong>本次 ${score}/100，全部正确。</strong>
-      <p>你已经掌握了落球法物理依据、标定要求、背光测量条件以及 AI/人工结果复核方法，可以进入实验大厅继续操作。</p>
+      <p id="quizAiSummary">AI 正在根据你的作答生成简短学习建议...</p>
     `;
-    addQuizTutorMessage("ai", "全部答对。后面如果对公式、雷诺数、壁效应或 AI 视觉测量流程还有疑问，可以继续问我。");
+    requestQuizGradingSummary();
     return;
   }
 
   el.quizTutorSummary.innerHTML = `
     <strong>本次 ${score}/100，发现 ${wrongItems.length} 道错题。</strong>
-    <p>下面列出错题、你的选择、正确答案和解析。你也可以继续追问相关实验原理。</p>
+    <p id="quizAiSummary">AI 正在根据你的作答生成总评。错题分析先收起，点击对应题目查看。</p>
     <div class="quiz-review-list">
       ${wrongItems
         .map(({ item, index, selected }) => `
-          <article>
-            <span>第 ${index} 题</span>
-            <h3>${item.title}</h3>
-            <p><b>你的选择：</b>${item.options[selected] || "未选择"}</p>
-            <p><b>正确答案：</b>${item.options[item.answer]}</p>
-            <p><b>本题分值：</b>${item.points} 分</p>
-            <p>${item.explanation}</p>
-          </article>
+          <details>
+            <summary>
+              <span>第 ${index} 题</span>
+              <strong>${escapeHtml(item.title)}</strong>
+              <button class="quiz-question-help inline" type="button" data-quiz-help="${item.key}">问这题</button>
+            </summary>
+            <p><b>你的选择：</b>${escapeHtml(item.options[selected] || "未选择")}</p>
+            <p><b>正确答案：</b>${escapeHtml(item.options[item.answer])}</p>
+            <p><b>针对分析：</b>${escapeHtml(item.explanation)}</p>
+          </details>
         `)
         .join("")}
     </div>
   `;
-  addQuizTutorMessage("ai", "我已经把错题和解析列出来了。你可以继续问和这些题、讲义或落球法实验有关的问题。");
+  requestQuizGradingSummary();
 }
 
-async function askQuizTutor(question, sourceButton = null) {
+async function requestQuizGradingSummary() {
+  const summary = document.getElementById("quizAiSummary");
+  if (!summary || !state.quizTutorContext) return;
+  try {
+    const data = await api("/api/assistant/ask", {
+      method: "POST",
+      body: JSON.stringify({
+        question: quizTutorPrompt("请根据本次预习作业给学生一个简短总评，只总结能力表现和下一步复习重点，不展开每道题解析。", state.quizTutorContext),
+        context: { kind: "quiz_grading", quiz: state.quizTutorContext },
+      }),
+    });
+    summary.textContent = data.answer || "已完成批改，请点击错题查看针对分析。";
+  } catch (error) {
+    summary.textContent = "AI 总评暂时生成失败，但错题诊断仍可查看。";
+  }
+}
+
+async function askQuizTutor(question, sourceButton = null, context = null, target = "panel") {
   if (!question.trim()) return;
-  addQuizTutorMessage("user", question);
-  if (!isExperimentRelatedQuestion(question)) {
-    addQuizTutorMessage("ai", "这个问题与落球法测粘、AI视觉测量、讲义或试题解析无关，我不能在本实验答疑中回答。");
+  const addMessage = target === "dialog" ? addQuizDialogMessage : addQuizTutorMessage;
+  addMessage("user", question);
+  const hasQuestionContext = Boolean(context) || target === "dialog";
+  if (!hasQuestionContext && !isExperimentRelatedQuestion(question)) {
+    addMessage("ai", "这个问题与落球法测粘、AI视觉测量、讲义或试题解析无关，我不能在本实验答疑中回答。");
     return;
   }
-  const pending = addQuizTutorMessage("ai pending", "正在根据讲义与本次试题生成答复...");
+  const pending = addMessage("ai pending", "正在根据讲义、题目和你的选择生成引导...");
   setButtonLoading(sourceButton, true, "生成中");
   try {
     const data = await api("/api/assistant/ask", {
       method: "POST",
-      body: JSON.stringify({ question }),
+      body: JSON.stringify({
+        question: quizTutorPrompt(question, context || state.quizTutorContext),
+        context: { kind: target === "dialog" ? "quiz_question" : "quiz_panel", quiz: context || state.quizTutorContext },
+      }),
     });
     pending.className = "message ai";
     renderAssistantAnswer(pending, data);
@@ -3809,6 +3918,39 @@ async function askQuizTutor(question, sourceButton = null) {
   } finally {
     setButtonLoading(sourceButton, false);
   }
+}
+
+function addQuizDialogMessage(type, text) {
+  const message = document.createElement("div");
+  message.className = `message ${type}`;
+  message.textContent = text;
+  el.quizDialogChat.appendChild(message);
+  el.quizDialogChat.scrollTop = el.quizDialogChat.scrollHeight;
+  return message;
+}
+
+function openQuizQuestionDialog(questionKey) {
+  const context = quizQuestionContext(questionKey);
+  if (!context) return;
+  state.quizDialogQuestion = context;
+  el.quizDialogMeta.textContent = `第 ${context.index} 题 · ${context.type}`;
+  el.quizDialogTitle.textContent = context.correct ? "这题已答对，可继续追问" : "错题针对辅导";
+  el.quizDialogContext.innerHTML = renderQuizQuestionContext(context);
+  el.quizDialogChat.innerHTML = "";
+  el.quizQuestionDialog.hidden = false;
+  addQuizDialogMessage(
+    "ai",
+    context.selected
+      ? `我会围绕你选的“${context.selectedText}”来引导。先想一想：这道题真正考的是哪个实验条件或操作步骤？`
+      : "你还没有选择这道题。我可以先帮你判断题目考点，但会尽量不直接给答案。",
+  );
+  el.quizDialogInput.focus();
+}
+
+function closeQuizQuestionDialog() {
+  el.quizQuestionDialog.hidden = true;
+  state.quizDialogQuestion = null;
+  if (el.quizDialogInput) el.quizDialogInput.value = "";
 }
 
 function evaluateQuiz(event) {
@@ -3821,6 +3963,7 @@ function evaluateQuiz(event) {
     showToast("请先完成全部准入题目。");
     return;
   }
+  state.quizAnswers = Object.fromEntries(quizQuestions.map((item) => [item.key, data.get(item.key)]));
   const score = quizQuestions.reduce((sum, item) => sum + (data.get(item.key) === item.answer ? item.points : 0), 0);
   el.quizScore.textContent = `${score}/100`;
   renderQuizTutorFeedback(data, score);
@@ -3868,6 +4011,9 @@ function resetQuiz() {
   el.quizTutorSummary.textContent = "提交测验后，系统会在这里给出错题、正确答案和解析。";
   el.quizTutorChat.innerHTML = "";
   el.quizTutorInput.value = "";
+  state.quizAnswers = {};
+  state.quizTutorContext = null;
+  closeQuizQuestionDialog();
   el.retryQuizBtn.hidden = true;
   el.enterHallBtn.hidden = true;
   updateExamProgress();
@@ -4131,7 +4277,6 @@ function renderSimulationError(message) {
   el.simRe.textContent = "--";
   el.simWallCorrection.textContent = "--";
   el.simReCorrection.textContent = "--";
-  el.simCorrectionTotal.textContent = "--";
   el.simulationRubric.innerHTML = `
     <article class="simulation-advice-row danger">
       <span class="advice-index">!</span>
@@ -4159,7 +4304,6 @@ function renderSimulation(result) {
   const re = finiteNumber(sim.re);
   const wallCorrection = finiteNumber(sim.wall_correction);
   const reynoldsCorrection = finiteNumber(sim.reynolds_correction);
-  const correctionTotal = finiteNumber(sim.correction_total);
   const rubric = Array.isArray(sim.rubric) ? sim.rubric : [];
 
   if (el.simulationStatus) el.simulationStatus.textContent = "已输出曲线";
@@ -4171,7 +4315,6 @@ function renderSimulation(result) {
   el.simRe.textContent = fixed(re, re !== null && re >= 100 ? 1 : 3);
   el.simWallCorrection.textContent = fixed(wallCorrection, 3);
   el.simReCorrection.textContent = fixed(reynoldsCorrection, 3);
-  el.simCorrectionTotal.textContent = fixed(correctionTotal, 3);
   el.simFeedbackState.textContent = sim.risk_label || "已完成";
   el.simFeedbackVt.textContent = `vt ${terminalVelocityText}`;
   el.simulationRubric.innerHTML = rubric.length
@@ -5116,6 +5259,18 @@ function bind() {
   setupReleaseBall();
   el.quizForm.addEventListener("submit", evaluateQuiz);
   el.quizForm.addEventListener("change", updateExamProgress);
+  el.quizQuestionList.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-quiz-help]");
+    if (!button) return;
+    event.preventDefault();
+    openQuizQuestionDialog(button.dataset.quizHelp);
+  });
+  el.quizTutorSummary.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-quiz-help]");
+    if (!button) return;
+    event.preventDefault();
+    openQuizQuestionDialog(button.dataset.quizHelp);
+  });
   el.enterHallBtn.addEventListener("click", () => switchView("dashboard"));
   el.skipQuizBtn.addEventListener("click", skipQuiz);
   el.quizTutorForm.addEventListener("submit", (event) => {
@@ -5123,6 +5278,16 @@ function bind() {
     const question = el.quizTutorInput.value.trim();
     el.quizTutorInput.value = "";
     askQuizTutor(question, el.quizTutorForm.querySelector("button[type='submit']"));
+  });
+  el.quizDialogForm?.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const question = el.quizDialogInput.value.trim();
+    el.quizDialogInput.value = "";
+    askQuizTutor(question, el.quizDialogForm.querySelector("button[type='submit']"), state.quizDialogQuestion, "dialog");
+  });
+  el.closeQuizDialogBtn?.addEventListener("click", closeQuizQuestionDialog);
+  el.quizQuestionDialog?.addEventListener("click", (event) => {
+    if (event.target === el.quizQuestionDialog) closeQuizQuestionDialog();
   });
   el.retryQuizBtn.addEventListener("click", resetQuiz);
   el.dashboardBackBtn?.addEventListener("click", () => switchView("gate"));

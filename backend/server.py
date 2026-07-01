@@ -115,7 +115,7 @@ class PlatformHandler(BaseHTTPRequestHandler):
         if parsed.path == "/api/assistant/ask":
             payload = self.read_json()
             question = str(payload.get("question", ""))
-            self.send_json(answer_question(question, latest_run()))
+            self.send_json(answer_question(question, latest_run(), payload.get("context")))
             return
         if parsed.path == "/api/video/inspect":
             payload = self.read_json()

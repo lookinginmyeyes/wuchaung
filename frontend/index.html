@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>落球法测液体粘滞系数实验 AI 学习平台</title>
     <link rel="icon" href="./assets/generated/icons/calibration.png" />
-    <link rel="stylesheet" href="./styles.css?v=report-readable-v113" />
+    <link rel="stylesheet" href="./styles.css?v=quiz-agent-v114" />
   </head>
   <body>
     <div class="app-shell">
@@ -211,6 +211,28 @@
                     </button>
                   </form>
                 </section>
+                <div id="quizQuestionDialog" class="quiz-question-dialog" hidden>
+                  <div class="quiz-question-dialog-card" role="dialog" aria-modal="true" aria-labelledby="quizDialogTitle">
+                    <div class="quiz-dialog-head">
+                      <div>
+                        <span id="quizDialogMeta">单题辅导</span>
+                        <strong id="quizDialogTitle">题目答疑</strong>
+                      </div>
+                      <button id="closeQuizDialogBtn" class="icon-button" type="button" aria-label="关闭单题答疑">
+                        <span aria-hidden="true">×</span>
+                      </button>
+                    </div>
+                    <div id="quizDialogContext" class="quiz-dialog-context"></div>
+                    <div id="quizDialogChat" class="quiz-dialog-chat" aria-live="polite"></div>
+                    <form id="quizDialogForm" class="chat-form quiz-dialog-form">
+                      <input id="quizDialogInput" type="text" placeholder="围绕这道题继续问：例如为什么我的选项不对？" />
+                      <button class="primary-button" type="submit">
+                        <img class="button-art" src="./assets/generated/buttons/ask-assistant.png" alt="" />
+                        <span>追问</span>
+                      </button>
+                    </form>
+                  </div>
+                </div>
               </section>
             </section>
           </section>
@@ -1156,11 +1178,6 @@
                     <strong id="simReCorrection">--</strong>
                     <small>1 + 3Re/16 - 19Re²/1080</small>
                   </article>
-                  <article class="metric">
-                    <span>K总</span>
-                    <strong id="simCorrectionTotal">--</strong>
-                    <small>综合修正因子</small>
-                  </article>
                 </div>
               </section>
 
@@ -1348,6 +1365,6 @@
     </div>
 
     <div id="toast" class="toast"></div>
-    <script src="./app.js?v=blind-test-v112"></script>
+    <script src="./app.js?v=quiz-agent-v114"></script>
   </body>
 </html>
