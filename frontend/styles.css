@@ -3779,15 +3779,30 @@ input[type="range"]:focus-visible {
 
 .quiz-question-help {
   float: right;
-  min-height: 30px;
-  margin: 0 0 8px 10px;
-  padding: 5px 10px;
-  border: 1px solid rgba(50, 122, 102, 0.24);
-  border-radius: 999px;
-  color: var(--accent-dark);
-  background: rgba(232, 244, 237, 0.9);
-  font: 900 12px var(--sans);
+  min-height: 34px;
+  margin: 0 0 10px 12px;
+  padding: 7px 13px;
+  border: 1px solid rgba(166, 66, 66, 0.28);
+  border-radius: 10px;
+  color: #8c2f2f;
+  background: #fff1ec;
+  font: 900 13px var(--sans);
+  box-shadow: 0 6px 14px rgba(166, 66, 66, 0.1);
   cursor: pointer;
+}
+
+.quiz-question-help::before {
+  content: "?";
+  display: inline-grid;
+  width: 18px;
+  height: 18px;
+  margin-right: 6px;
+  place-items: center;
+  border-radius: 50%;
+  color: #fff;
+  background: #a64242;
+  font-size: 12px;
+  line-height: 1;
 }
 
 .quiz-question-help.inline {

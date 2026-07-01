@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>落球法测液体粘滞系数实验 AI 学习平台</title>
     <link rel="icon" href="./assets/generated/icons/calibration.png" />
-    <link rel="stylesheet" href="./styles.css?v=backend-agent-v116" />
+    <link rel="stylesheet" href="./styles.css?v=agent-visible-v117" />
   </head>
   <body>
     <div class="app-shell">
@@ -190,14 +190,14 @@
                     </button>
                   </div>
                 </form>
-                <section class="quiz-tutor-panel" id="quizTutorPanel" hidden>
+                <section class="quiz-tutor-panel" id="quizTutorPanel">
                   <div class="section-title">
                     <div>
                       <p class="eyebrow">AI 试题辅导</p>
-                      <h2>错题诊断与答疑</h2>
+                      <h2>预习问答与错题诊断</h2>
                     </div>
                   </div>
-                  <div id="quizTutorSummary" class="quiz-tutor-summary">提交测验后，系统会在这里给出错题、正确答案和解析。</div>
+                  <div id="quizTutorSummary" class="quiz-tutor-summary">做题时可以点击每道题右侧的“问这题”，也可以在下方直接提问；提交测验后，系统会在这里给出错题总结和针对分析。</div>
                   <div id="quizTutorChat" class="quiz-tutor-chat" aria-live="polite"></div>
                   <form id="quizTutorForm" class="chat-form quiz-tutor-form">
                     <input id="quizTutorInput" type="text" placeholder="继续提问：例如为什么要拟合终端速度？" />
@@ -1252,11 +1252,22 @@
           <section class="assistant-section panel" id="assistant">
             <div class="section-title">
               <div>
-                <h2>误差来源与改进建议</h2>
+                <p class="eyebrow">AI 实验复盘</p>
+                <h2>实验复盘 Agent</h2>
               </div>
-              <p>围绕落球法最容易被质疑的几个点：匀速段、Re 条件、壁效应、折射与释放质量。</p>
+              <p>载入实验记录后，可以直接追问误差来源、结果可信度和改进建议。</p>
             </div>
             <div class="assistant-grid">
+              <div class="chat-panel">
+                <div id="chatLog" class="chat-log"></div>
+                <form id="chatForm" class="chat-form">
+                  <input id="questionInput" type="text" placeholder="输入关于本次实验结果的问题" />
+                  <button class="primary-button" type="submit">
+                    <img class="button-art" src="./assets/generated/buttons/ask-assistant.png" alt="" />
+                    <span>提问</span>
+                  </button>
+                </form>
+              </div>
               <div class="quick-list">
                 <button type="button" data-question="为什么需要识别匀速段？">
                   <img src="./assets/generated/buttons/quick-uniform.png" alt="" />
@@ -1274,16 +1285,6 @@
                   <img src="./assets/generated/buttons/quick-computer.png" alt="" />
                   <span>释放质量诊断</span>
                 </button>
-              </div>
-              <div class="chat-panel">
-                <div id="chatLog" class="chat-log"></div>
-                <form id="chatForm" class="chat-form">
-                  <input id="questionInput" type="text" placeholder="输入关于本次实验结果的问题" />
-                  <button class="primary-button" type="submit">
-                    <img class="button-art" src="./assets/generated/buttons/ask-assistant.png" alt="" />
-                    <span>提问</span>
-                  </button>
-                </form>
               </div>
             </div>
           </section>
@@ -1361,6 +1362,6 @@
     </div>
 
     <div id="toast" class="toast"></div>
-    <script src="./app.js?v=backend-agent-v116"></script>
+    <script src="./app.js?v=agent-visible-v117"></script>
   </body>
 </html>

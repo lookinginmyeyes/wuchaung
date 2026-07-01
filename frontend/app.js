@@ -4004,8 +4004,8 @@ function resetQuiz() {
   el.quizScore.textContent = "--";
   el.quizResult.textContent = "完成测验后，系统会判断是否允许进入大厅。";
   el.quizResult.className = "quiz-result";
-  el.quizTutorPanel.hidden = true;
-  el.quizTutorSummary.textContent = "提交测验后，系统会在这里给出错题、正确答案和解析。";
+  el.quizTutorPanel.hidden = false;
+  el.quizTutorSummary.textContent = "做题时可以点击每道题右侧的“问这题”，也可以在下方直接提问；提交测验后，系统会在这里给出错题总结和针对分析。";
   el.quizTutorChat.innerHTML = "";
   el.quizTutorInput.value = "";
   state.quizAnswers = {};
