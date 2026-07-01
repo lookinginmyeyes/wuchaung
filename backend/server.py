@@ -57,7 +57,7 @@ class PlatformHandler(BaseHTTPRequestHandler):
             return
         if parsed.path == "/api/runs":
             query = parse_qs(parsed.query)
-            limit = int(query.get("limit", ["20"])[0])
+            limit = int(query["limit"][0]) if query.get("limit") else None
             self.send_json({"runs": list_runs(limit=limit)})
             return
         if parsed.path.startswith("/api/runs/") and parsed.path.endswith("/report"):

@@ -4616,7 +4616,7 @@ function renderDiagnostics(items) {
 async function loadRecords() {
   setButtonLoading(el.refreshBtn, true, "刷新中");
   try {
-    const data = await api("/api/runs?limit=20");
+    const data = await api("/api/runs");
     state.records = data.runs || [];
     const availableIds = new Set(state.records.map((row) => String(row.id)));
     state.selectedRecordIds = new Set([...state.selectedRecordIds].filter((id) => availableIds.has(String(id))));

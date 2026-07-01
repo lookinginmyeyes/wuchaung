@@ -200,18 +200,23 @@ def attach_run_video(run_id: int, filename: str, mime_type: str, size: int) -> d
         return payload["video"]
 
 
-def list_runs(limit: int = 20) -> list[dict]:
+def list_runs(limit: int | None = None) -> list[dict]:
     if use_supabase():
         return supabase_list_runs(limit)
     with connect() as conn:
+        params = ()
+        limit_clause = ""
+        if limit is not None:
+            limit_clause = "LIMIT ?"
+            params = (max(1, int(limit)),)
         rows = conn.execute(
-            """
+            f"""
             SELECT id, created_at, liquid, terminal_velocity, viscosity, r2, re, score, source, payload
             FROM runs
             ORDER BY id DESC
-            LIMIT ?
+            {limit_clause}
             """,
-            (limit,),
+            params,
         ).fetchall()
     records = []
     for row in rows:
@@ -370,14 +375,28 @@ def supabase_attach_run_video(run_id: int, filename: str, mime_type: str, size: 
     return payload["video"]
 
 
-def supabase_list_runs(limit: int = 20) -> list[dict]:
-    safe_limit = max(1, min(int(limit), 100))
-    query = urlencode({
-        "select": "id,created_at,liquid,terminal_velocity,viscosity,r2,re,score,source,payload",
-        "order": "id.desc",
-        "limit": str(safe_limit),
-    })
-    rows = supabase_request("GET", f"{SUPABASE_TABLE}?{query}") or []
+def supabase_list_runs(limit: int | None = None) -> list[dict]:
+    rows = []
+    page_size = 1000
+    remaining = max(1, int(limit)) if limit is not None else None
+    offset = 0
+    while True:
+        batch_size = min(page_size, remaining) if remaining is not None else page_size
+        query = urlencode({
+            "select": "id,created_at,liquid,terminal_velocity,viscosity,r2,re,score,source,payload",
+            "order": "id.desc",
+            "limit": str(batch_size),
+            "offset": str(offset),
+        })
+        batch = supabase_request("GET", f"{SUPABASE_TABLE}?{query}") or []
+        rows.extend(batch)
+        if len(batch) < batch_size:
+            break
+        offset += batch_size
+        if remaining is not None:
+            remaining -= len(batch)
+            if remaining <= 0:
+                break
     records = []
     for row in rows:
         payload = row.pop("payload") or {}
