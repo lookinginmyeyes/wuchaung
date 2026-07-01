@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>正在返回实验平台</title>
+    <script>
+      const repoBase = "/wuchaung/";
+      const target = new URL(`${repoBase}frontend/index.html`, window.location.origin);
+      target.search = window.location.search;
+      target.hash = window.location.hash;
+      window.location.replace(target.href);
+    </script>
+  </head>
+  <body>
+    <p>页面路径不正确，正在返回实验平台。</p>
+  </body>
+</html>

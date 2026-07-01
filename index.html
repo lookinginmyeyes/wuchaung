@@ -1,9 +1,20 @@
-<!DOCTYPE html>
-<html>
-<head>
-<meta http-equiv="refresh" content="0; url=frontend/index.html">
-</head>
-<body>
-<p>Redirecting to <a href="frontend/index.html">platform</a>...</p>
-</body>
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>落球法测液体粘滞系数实验 AI 学习平台</title>
+    <script>
+      const target = new URL("./frontend/index.html", window.location.href);
+      target.search = window.location.search;
+      target.hash = window.location.hash;
+      window.location.replace(target.href);
+    </script>
+  </head>
+  <body>
+    <p>正在进入平台：<a id="platformLink" href="./frontend/index.html">打开实验平台</a></p>
+    <script>
+      document.getElementById("platformLink").href = new URL("./frontend/index.html", window.location.href).href;
+    </script>
+  </body>
 </html>

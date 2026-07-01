@@ -3818,6 +3818,27 @@ function quizSubmissionContext(formData, score) {
   };
 }
 
+function buildOpenQuizTutorContext() {
+  const formData = new FormData(el.quizForm);
+  const items = quizQuestions.map((item) => {
+    const selected = formData.get(item.key);
+    return {
+      ...quizQuestionContext(item.key),
+      selected,
+      selectedText: quizOptionText(item, selected),
+      correct: selected ? selected === item.answer : null,
+    };
+  });
+  return {
+    stage: "pre_submit_or_general_question",
+    total: 100,
+    passScore: quizPassScore,
+    answered: items.filter((item) => item.selected).length,
+    questionCount: items.length,
+    items,
+  };
+}
+
 function quizTutorPrompt(question, context) {
   return [
     "你是落球法 AI 实验平台的预习作业问答 agent。",
@@ -3906,19 +3927,15 @@ async function askQuizTutor(question, sourceButton = null, context = null, targe
   if (!question.trim()) return;
   const addMessage = target === "dialog" ? addQuizDialogMessage : addQuizTutorMessage;
   addMessage("user", question);
-  const hasQuestionContext = Boolean(context) || target === "dialog";
-  if (!hasQuestionContext && !isExperimentRelatedQuestion(question)) {
-    addMessage("ai", "这个问题与落球法测粘、AI视觉测量、讲义或试题解析无关，我不能在本实验答疑中回答。");
-    return;
-  }
   const pending = addMessage("ai pending", "正在根据讲义、题目和你的选择生成引导...");
   setButtonLoading(sourceButton, true, "生成中");
   try {
+    const tutorContext = context || state.quizTutorContext || buildOpenQuizTutorContext();
     const data = await api("/api/assistant/ask", {
       method: "POST",
       body: JSON.stringify({
-        question: quizTutorPrompt(question, context || state.quizTutorContext),
-        context: { kind: target === "dialog" ? "quiz_question" : "quiz_panel", quiz: context || state.quizTutorContext },
+        question: quizTutorPrompt(question, tutorContext),
+        context: { kind: target === "dialog" ? "quiz_question" : "quiz_panel", quiz: tutorContext },
       }),
     });
     pending.className = "message ai";
