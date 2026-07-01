@@ -15,15 +15,16 @@ const LIVE_SAMPLE_FPS_WINDOW_MS = 1000;
 const FALL_OFFSET_MONITOR_ENABLED = true;
 const LOCAL_API_BASE_URL = "http://127.0.0.1:8877";
 const HOSTED_API_BASE_URL = "https://42.194.177.159";
+const configuredApiBaseUrl = new URLSearchParams(window.location.search).get("api") || window.localStorage?.getItem("fallingBallApiBase") || "";
 const API_BASE_URL = (() => {
-  const params = new URLSearchParams(window.location.search);
-  const configured = params.get("api") || window.localStorage?.getItem("fallingBallApiBase") || "";
+  const configured = configuredApiBaseUrl;
   if (configured) return configured.replace(/\/$/, "");
   const host = window.location.hostname;
   if (host.endsWith("github.io")) return HOSTED_API_BASE_URL;
-  if (window.location.protocol === "file:") return LOCAL_API_BASE_URL;
+  if (window.location.protocol === "file:") return HOSTED_API_BASE_URL;
   return "";
 })();
+const API_BASE_EXPLICIT = Boolean(configuredApiBaseUrl);
 
 const state = {
   latest: null,
@@ -117,7 +118,6 @@ const el = {
   quizDialogInput: document.getElementById("quizDialogInput"),
   closeQuizDialogBtn: document.getElementById("closeQuizDialogBtn"),
   submitQuizBtn: document.getElementById("submitQuizBtn"),
-  skipQuizBtn: document.getElementById("skipQuizBtn"),
   retryQuizBtn: document.getElementById("retryQuizBtn"),
   enterHallBtn: document.getElementById("enterHallBtn"),
   resetAccessBtn: document.getElementById("resetAccessBtn"),
@@ -1174,26 +1174,37 @@ function validateExperimentInputs({ requireReference = false } = {}) {
   return true;
 }
 
-function apiUrl(path) {
+function apiUrl(path, base = API_BASE_URL) {
   if (/^https?:\/\//i.test(path)) return path;
-  return `${API_BASE_URL}${path}`;
+  return `${base}${path}`;
 }
 
 async function api(path, options = {}) {
-  let response;
-  try {
-    response = await fetch(apiUrl(path), {
-      ...options,
-      headers: {
-        "Content-Type": "application/json",
-        ...(options.headers || {}),
-      },
-    });
-  } catch (error) {
-    if (API_BASE_URL) {
-      throw new Error(`无法连接后端 ${API_BASE_URL}。请确认服务器后端已经启动，或在网址参数 ?api= 中指定可用后端地址。`);
+  const bases = [API_BASE_URL];
+  const canFallbackToHosted = !API_BASE_EXPLICIT && !/^https?:\/\//i.test(path) && API_BASE_URL !== HOSTED_API_BASE_URL;
+  if (canFallbackToHosted) bases.push(HOSTED_API_BASE_URL);
+  let response = null;
+  let lastConnectionError = null;
+  for (const base of bases) {
+    try {
+      response = await fetch(apiUrl(path, base), {
+        ...options,
+        headers: {
+          "Content-Type": "application/json",
+          ...(options.headers || {}),
+        },
+      });
+      break;
+    } catch (error) {
+      lastConnectionError = error;
     }
-    throw error;
+  }
+  if (!response) {
+    if (bases.some(Boolean)) {
+      throw new Error(`无法连接后端 ${bases.filter(Boolean).join(" 或 ")}。请确认云端后端已启动，或在网址参数 ?api= 中指定可用后端地址。`);
+    }
+    if (lastConnectionError) throw lastConnectionError;
+    throw new Error("无法连接后端。");
   }
   if (!response.ok) {
     let detail = `${response.status} ${response.statusText}`;
@@ -3988,20 +3999,6 @@ function evaluateQuiz(event) {
   }
 }
 
-function skipQuiz() {
-  state.accessGranted = true;
-  state.examStarted = false;
-  state.lectureStarted = false;
-  state.lectureRead = true;
-  el.quizResult.textContent = "已跳过准入测试，当前仅用于页面调试。";
-  el.quizResult.className = "quiz-result ok";
-  el.retryQuizBtn.hidden = true;
-  el.enterHallBtn.hidden = true;
-  updateAccessState();
-  switchView("dashboard");
-  showToast("已跳过测试，进入实验大厅。");
-}
-
 function resetQuiz() {
   el.quizForm.reset();
   el.quizScore.textContent = "--";
@@ -5350,7 +5347,6 @@ function bind() {
     openQuizQuestionDialog(button.dataset.quizHelp);
   });
   el.enterHallBtn.addEventListener("click", () => switchView("dashboard"));
-  el.skipQuizBtn.addEventListener("click", skipQuiz);
   el.quizTutorForm.addEventListener("submit", (event) => {
     event.preventDefault();
     const question = el.quizTutorInput.value.trim();
