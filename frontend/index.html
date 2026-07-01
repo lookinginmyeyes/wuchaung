@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>落球法测液体粘滞系数实验 AI 学习平台</title>
     <link rel="icon" href="./assets/generated/icons/calibration.png" />
-    <link rel="stylesheet" href="./styles.css?v=simulation-risk-v110" />
+    <link rel="stylesheet" href="./styles.css?v=blind-test-v112" />
   </head>
   <body>
     <div class="app-shell">
@@ -260,6 +260,134 @@
                         <span>查看记录与复盘</span>
                       </button>
                     </div>
+                  </article>
+                  <article>
+                    <img src="./assets/generated/trajectory-fit-tile.png" alt="" />
+                    <div>
+                      <span>液体盲测</span>
+                      <strong>物性匹配推断未知液体</strong>
+                      <p>输入测得粘度、密度、温度和外观信息，与候选液体物性库匹配，输出最可能液体和证据链。</p>
+                      <button class="primary-button" type="button" data-go-view="blind">
+                        <img class="button-art" src="./assets/generated/buttons/run-analysis.png" alt="" />
+                        <span>进入液体盲测</span>
+                      </button>
+                    </div>
+                  </article>
+                </div>
+              </section>
+            </section>
+          </section>
+
+          <section class="app-view blind-view" id="view-blind" data-view="blind" hidden>
+            <section class="blind-layout">
+              <section class="panel blind-input-panel">
+                <div class="section-title">
+                  <div>
+                    <p class="eyebrow">未知液体识别</p>
+                    <h2>液体盲测</h2>
+                  </div>
+                  <button id="resetBlindTestBtn" class="ghost-button" type="button">
+                    <img class="button-art" src="./assets/generated/buttons/reset-params.png" alt="" />
+                    <span>清空输入</span>
+                  </button>
+                </div>
+                <div class="blind-notice">
+                  <strong>先用实验测量，再让平台推断</strong>
+                  <p>盲测依据粘度、密度、温度和外观特征进行候选排序。温度会影响参考粘度，结果只作为实验判断，不替代重复测量。</p>
+                </div>
+                <div class="blind-form-grid">
+                  <label>
+                    <span>液体温度 ℃</span>
+                    <input id="blindTemperatureC" type="number" value="25" step="0.1" />
+                  </label>
+                  <label>
+                    <span>测得粘度 Pa·s</span>
+                    <input id="blindViscosity" type="number" step="0.0001" placeholder="例如 0.650" />
+                  </label>
+                  <label>
+                    <span>液体密度 kg/m³</span>
+                    <input id="blindDensity" type="number" step="1" placeholder="例如 961" />
+                  </label>
+                  <label>
+                    <span>液体颜色</span>
+                    <select id="blindColor">
+                      <option value="clear">无色透明</option>
+                      <option value="pale-yellow">浅黄色</option>
+                      <option value="yellow">黄色</option>
+                      <option value="brown">棕黄色</option>
+                      <option value="blue">蓝色/染色</option>
+                      <option value="unknown">不确定</option>
+                    </select>
+                  </label>
+                  <label>
+                    <span>透明度</span>
+                    <select id="blindClarity">
+                      <option value="transparent">透明</option>
+                      <option value="translucent">半透明</option>
+                      <option value="cloudy">浑浊</option>
+                      <option value="unknown">不确定</option>
+                    </select>
+                  </label>
+                  <label>
+                    <span>流动观感</span>
+                    <select id="blindFlow">
+                      <option value="unknown">不确定</option>
+                      <option value="thin">很稀，接近水</option>
+                      <option value="medium">中等，缓慢流动</option>
+                      <option value="thick">很稠，明显拉丝</option>
+                    </select>
+                  </label>
+                </div>
+                <div class="blind-actions">
+                  <button id="runBlindTestBtn" class="primary-button" type="button">
+                    <img class="button-art" src="./assets/generated/buttons/run-analysis.png" alt="" />
+                    <span>AI匹配液体</span>
+                  </button>
+                  <button id="fillBlindFromRunBtn" class="ghost-button" type="button">
+                    <img class="button-art" src="./assets/generated/buttons/load-record.png" alt="" />
+                    <span>用当前实验结果填入</span>
+                  </button>
+                </div>
+              </section>
+
+              <section class="panel blind-result-panel">
+                <div class="section-title">
+                  <div>
+                    <p class="eyebrow">匹配结果</p>
+                    <h2 id="blindResultTitle">等待输入</h2>
+                  </div>
+                  <span id="blindConfidenceBadge" class="blind-confidence-badge">--</span>
+                </div>
+                <div id="blindSummary" class="blind-summary">
+                  输入测得数据后，平台会按粘度、密度、颜色和透明度给出候选液体排序。
+                </div>
+                <div id="blindTopMatch" class="blind-top-match">
+                  <span>最可能液体</span>
+                  <strong>--</strong>
+                  <p>暂无匹配结果。</p>
+                </div>
+                <div class="blind-result-table-wrap">
+                  <table class="blind-result-table">
+                    <thead>
+                      <tr>
+                        <th>候选液体</th>
+                        <th>温度修正粘度</th>
+                        <th>密度</th>
+                        <th>匹配度</th>
+                        <th>依据</th>
+                      </tr>
+                    </thead>
+                    <tbody id="blindResultRows">
+                      <tr>
+                        <td colspan="5">暂无数据</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+                <div id="blindAdvice" class="blind-advice-list">
+                  <article>
+                    <strong>测量建议</strong>
+                    <p>盲测前建议至少重复 3 次落球测量，并记录温度；若温度波动超过 1℃，粘度匹配会明显变差。</p>
                   </article>
                 </div>
               </section>
@@ -1220,6 +1348,6 @@
     </div>
 
     <div id="toast" class="toast"></div>
-    <script src="./app.js?v=liquid-validation-v111"></script>
+    <script src="./app.js?v=blind-test-v112"></script>
   </body>
 </html>

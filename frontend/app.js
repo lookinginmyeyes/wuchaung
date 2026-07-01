@@ -278,6 +278,21 @@ const el = {
   simFeedbackVt: document.getElementById("simFeedbackVt"),
   simulationRubric: document.getElementById("simulationRubric"),
   sendSimulationToWorkbenchBtn: document.getElementById("sendSimulationToWorkbenchBtn"),
+  blindTemperatureC: document.getElementById("blindTemperatureC"),
+  blindViscosity: document.getElementById("blindViscosity"),
+  blindDensity: document.getElementById("blindDensity"),
+  blindColor: document.getElementById("blindColor"),
+  blindClarity: document.getElementById("blindClarity"),
+  blindFlow: document.getElementById("blindFlow"),
+  runBlindTestBtn: document.getElementById("runBlindTestBtn"),
+  resetBlindTestBtn: document.getElementById("resetBlindTestBtn"),
+  fillBlindFromRunBtn: document.getElementById("fillBlindFromRunBtn"),
+  blindResultTitle: document.getElementById("blindResultTitle"),
+  blindConfidenceBadge: document.getElementById("blindConfidenceBadge"),
+  blindSummary: document.getElementById("blindSummary"),
+  blindTopMatch: document.getElementById("blindTopMatch"),
+  blindResultRows: document.getElementById("blindResultRows"),
+  blindAdvice: document.getElementById("blindAdvice"),
   toast: document.getElementById("toast"),
 };
 
@@ -303,7 +318,12 @@ const viewMeta = {
   dashboard: {
     eyebrow: "大厅",
     title: "落球法 AI 实验大厅",
-    subtitle: "通过准入后，从大厅进入 AI 实验测量、虚拟仿真、实验记录与结果复盘。",
+    subtitle: "通过准入后，从大厅进入 AI 实验测量、虚拟仿真、液体盲测、实验记录与结果复盘。",
+  },
+  blind: {
+    eyebrow: "液体盲测",
+    title: "未知液体物性匹配",
+    subtitle: "输入温度、测得粘度、密度和外观特征，按候选液体物性库给出最可能液体和匹配证据。",
   },
   workspace: {
     eyebrow: "AI实验测量",
@@ -531,6 +551,117 @@ const presets = {
   "蓖麻油 25℃": { rhoLiquid: 961, etaReference: 0.65, temperatureC: 25 },
 };
 
+const blindLiquidCandidates = [
+  {
+    name: "纯水",
+    refTempC: 20,
+    viscosityPaS: 0.0010016,
+    densityKgM3: 998.2,
+    beta: 1850,
+    expansion: 0.00021,
+    colors: ["clear"],
+    clarity: ["transparent"],
+    flow: "thin",
+    note: "低粘度液体，落球法中容易使 Re 偏高，盲测时需特别看雷诺数条件。",
+  },
+  {
+    name: "无水乙醇",
+    refTempC: 20,
+    viscosityPaS: 0.00120,
+    densityKgM3: 789,
+    beta: 1500,
+    expansion: 0.0011,
+    colors: ["clear"],
+    clarity: ["transparent"],
+    flow: "thin",
+    note: "密度明显低于水和多元醇，挥发性强；仅靠粘度容易与低粘度液体混淆。",
+  },
+  {
+    name: "甲醇",
+    refTempC: 25,
+    viscosityPaS: 0.000543,
+    densityKgM3: 787,
+    beta: 1350,
+    expansion: 0.0012,
+    colors: ["clear"],
+    clarity: ["transparent"],
+    flow: "thin",
+    note: "粘度很低且有毒，不建议作为学生盲测实物样品。",
+  },
+  {
+    name: "乙二醇",
+    refTempC: 20,
+    viscosityPaS: 0.0198,
+    densityKgM3: 1113,
+    beta: 3300,
+    expansion: 0.00065,
+    colors: ["clear", "pale-yellow"],
+    clarity: ["transparent"],
+    flow: "medium",
+    note: "密度高于水，粘度处于中等区间，温度变化会明显影响匹配。",
+  },
+  {
+    name: "丙二醇",
+    refTempC: 25,
+    viscosityPaS: 0.0486,
+    densityKgM3: 1036,
+    beta: 4100,
+    expansion: 0.00075,
+    colors: ["clear", "pale-yellow"],
+    clarity: ["transparent"],
+    flow: "medium",
+    note: "常见安全性较好的中等粘度候选，需结合密度与温度区分。",
+  },
+  {
+    name: "500 cSt 硅油",
+    refTempC: 25,
+    viscosityPaS: 0.485,
+    densityKgM3: 970,
+    beta: 2600,
+    expansion: 0.00095,
+    colors: ["clear", "pale-yellow"],
+    clarity: ["transparent"],
+    flow: "thick",
+    note: "粘度高、密度接近 0.97 g/cm³，外观多为无色或浅色透明。",
+  },
+  {
+    name: "蓖麻油",
+    refTempC: 25,
+    viscosityPaS: 0.65,
+    densityKgM3: 961,
+    beta: 5200,
+    expansion: 0.00072,
+    colors: ["pale-yellow", "yellow", "brown"],
+    clarity: ["transparent", "translucent"],
+    flow: "thick",
+    note: "浅黄到黄色、粘度较高；与高粘硅油需要依靠颜色和温度修正区分。",
+  },
+  {
+    name: "纯甘油",
+    refTempC: 25,
+    viscosityPaS: 0.945,
+    densityKgM3: 1261,
+    beta: 6200,
+    expansion: 0.0005,
+    colors: ["clear", "pale-yellow"],
+    clarity: ["transparent"],
+    flow: "thick",
+    note: "密度和粘度都很高，温度敏感；是落球法教学中辨识度较强的候选。",
+  },
+  {
+    name: "食用植物油",
+    refTempC: 25,
+    viscosityPaS: 0.065,
+    densityKgM3: 920,
+    beta: 4300,
+    expansion: 0.00075,
+    colors: ["pale-yellow", "yellow"],
+    clarity: ["transparent", "translucent"],
+    flow: "medium",
+    note: "不同品类差异很大，只能作为泛化候选，不能给出精确种类。",
+  },
+];
+
 // Standard table values at the listed temperature. Viscosity is strongly temperature-dependent.
 const simulationPresets = {
   standard: {
@@ -643,6 +774,181 @@ function escapeHtml(value) {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#39;");
+}
+
+function formatBlindViscosity(value) {
+  const parsed = finiteNumber(value);
+  if (parsed === null) return "--";
+  if (parsed < 0.01) return `${(parsed * 1000).toFixed(3)} mPa·s`;
+  return `${parsed.toFixed(parsed >= 0.1 ? 3 : 4)} Pa·s`;
+}
+
+function correctedBlindViscosity(candidate, temperatureC) {
+  const refK = candidate.refTempC + 273.15;
+  const tempK = temperatureC + 273.15;
+  return candidate.viscosityPaS * Math.exp(candidate.beta * ((1 / tempK) - (1 / refK)));
+}
+
+function correctedBlindDensity(candidate, temperatureC) {
+  return candidate.densityKgM3 * (1 - candidate.expansion * (temperatureC - candidate.refTempC));
+}
+
+function blindColorScore(candidate, color) {
+  if (!color || color === "unknown") return 0.72;
+  return candidate.colors.includes(color) ? 1 : 0.42;
+}
+
+function blindClarityScore(candidate, clarity) {
+  if (!clarity || clarity === "unknown") return 0.78;
+  return candidate.clarity.includes(clarity) ? 1 : 0.48;
+}
+
+function blindFlowScore(candidate, flow, measuredViscosity) {
+  if (!flow || flow === "unknown") return 0.76;
+  const measuredFlow = measuredViscosity < 0.006 ? "thin" : measuredViscosity < 0.15 ? "medium" : "thick";
+  return candidate.flow === flow || measuredFlow === flow ? 1 : 0.46;
+}
+
+function computeBlindMatches(input) {
+  return blindLiquidCandidates
+    .map((candidate) => {
+      const etaAtTemp = correctedBlindViscosity(candidate, input.temperatureC);
+      const densityAtTemp = correctedBlindDensity(candidate, input.temperatureC);
+      const viscosityLogError = Math.abs(Math.log(input.viscosityPaS / etaAtTemp));
+      const densityRelError = Math.abs(input.densityKgM3 - densityAtTemp) / Math.max(1, densityAtTemp);
+      const viscosityScore = Math.exp(-Math.pow(viscosityLogError / 0.55, 2));
+      const densityScore = Math.exp(-Math.pow(densityRelError / 0.055, 2));
+      const colorScore = blindColorScore(candidate, input.color);
+      const clarityScore = blindClarityScore(candidate, input.clarity);
+      const flowScore = blindFlowScore(candidate, input.flow, input.viscosityPaS);
+      const score = (viscosityScore * 0.48) + (densityScore * 0.32) + (colorScore * 0.09) + (clarityScore * 0.05) + (flowScore * 0.06);
+      return {
+        ...candidate,
+        etaAtTemp,
+        densityAtTemp,
+        viscosityLogError,
+        densityRelError,
+        viscosityScore,
+        densityScore,
+        colorScore,
+        clarityScore,
+        flowScore,
+        score: Math.max(0, Math.min(1, score)),
+      };
+    })
+    .sort((a, b) => b.score - a.score);
+}
+
+function renderBlindResults(matches, input) {
+  const top = matches[0];
+  const second = matches[1];
+  const confidence = Math.round(top.score * 100);
+  const gap = top.score - (second?.score || 0);
+  const certainty = top.score >= 0.78 && gap >= 0.12 ? "高可信" : top.score >= 0.58 ? "需复核" : "低可信";
+  el.blindResultTitle.textContent = `${top.name} · ${certainty}`;
+  el.blindConfidenceBadge.textContent = `${confidence}%`;
+  el.blindConfidenceBadge.dataset.level = top.score >= 0.78 ? "ok" : top.score >= 0.58 ? "warn" : "danger";
+  el.blindSummary.textContent = `本次以 ${input.temperatureC.toFixed(1)}℃ 下的粘度和密度为主证据，颜色与透明度作为辅助证据。若前两名匹配度接近，应补做重复测量或提高密度测量精度。`;
+  el.blindTopMatch.innerHTML = `
+    <span>最可能液体</span>
+    <strong>${escapeHtml(top.name)}</strong>
+    <p>${escapeHtml(top.note)}</p>
+  `;
+  el.blindResultRows.innerHTML = matches.slice(0, 6).map((item) => {
+    const evidence = [
+      `η误差 ${Math.abs(Math.exp(item.viscosityLogError) - 1) * 100 < 999 ? `${Math.round(Math.abs(Math.exp(item.viscosityLogError) - 1) * 100)}%` : "很大"}`,
+      `ρ误差 ${(item.densityRelError * 100).toFixed(1)}%`,
+      `外观 ${Math.round(((item.colorScore + item.clarityScore) / 2) * 100)}%`,
+    ].join(" · ");
+    return `
+      <tr>
+        <td><strong>${escapeHtml(item.name)}</strong><small>${escapeHtml(item.note)}</small></td>
+        <td>${formatBlindViscosity(item.etaAtTemp)}</td>
+        <td>${item.densityAtTemp.toFixed(0)} kg/m³</td>
+        <td><span class="blind-score-pill">${Math.round(item.score * 100)}%</span></td>
+        <td>${escapeHtml(evidence)}</td>
+      </tr>
+    `;
+  }).join("");
+  const advice = [];
+  if (top.score < 0.58) {
+    advice.push(["匹配度偏低", "当前数据没有明显落入候选库。优先检查单位：粘度应为 Pa·s，密度应为 kg/m³。"]);
+  }
+  if (gap < 0.12) {
+    advice.push(["前两名接近", `最接近的是 ${top.name} 和 ${second?.name || "另一候选"}，建议增加一次重复落球测量，并提高温度记录精度。`]);
+  }
+  if (input.temperatureC < 10 || input.temperatureC > 40) {
+    advice.push(["温度外推较多", "候选库主要按 20-25℃附近物性修正，温度太低或太高时不确定性会增大。"]);
+  }
+  if (!advice.length) {
+    advice.push(["结果可用", "本次粘度、密度和外观证据较一致。报告中仍应说明候选库范围和温度修正的不确定性。"]);
+  }
+  el.blindAdvice.innerHTML = advice.map(([title, body]) => `
+    <article>
+      <strong>${escapeHtml(title)}</strong>
+      <p>${escapeHtml(body)}</p>
+    </article>
+  `).join("");
+}
+
+function runBlindTest() {
+  const input = {
+    temperatureC: number(el.blindTemperatureC),
+    viscosityPaS: number(el.blindViscosity),
+    densityKgM3: number(el.blindDensity),
+    color: el.blindColor?.value || "unknown",
+    clarity: el.blindClarity?.value || "unknown",
+    flow: el.blindFlow?.value || "unknown",
+  };
+  const missing = [];
+  if (!Number.isFinite(input.temperatureC)) missing.push("液体温度");
+  if (!Number.isFinite(input.viscosityPaS) || input.viscosityPaS <= 0) missing.push("测得粘度");
+  if (!Number.isFinite(input.densityKgM3) || input.densityKgM3 <= 0) missing.push("液体密度");
+  if (missing.length) {
+    showToast(`请先填写：${missing.join("、")}`);
+    return;
+  }
+  renderBlindResults(computeBlindMatches(input), input);
+  showToast("液体盲测匹配完成。");
+}
+
+function resetBlindTest() {
+  if (el.blindTemperatureC) el.blindTemperatureC.value = "25";
+  if (el.blindViscosity) el.blindViscosity.value = "";
+  if (el.blindDensity) el.blindDensity.value = "";
+  if (el.blindColor) el.blindColor.value = "clear";
+  if (el.blindClarity) el.blindClarity.value = "transparent";
+  if (el.blindFlow) el.blindFlow.value = "unknown";
+  if (el.blindResultTitle) el.blindResultTitle.textContent = "等待输入";
+  if (el.blindConfidenceBadge) {
+    el.blindConfidenceBadge.textContent = "--";
+    delete el.blindConfidenceBadge.dataset.level;
+  }
+  if (el.blindSummary) el.blindSummary.textContent = "输入测得数据后，平台会按粘度、密度、颜色和透明度给出候选液体排序。";
+  if (el.blindTopMatch) {
+    el.blindTopMatch.innerHTML = "<span>最可能液体</span><strong>--</strong><p>暂无匹配结果。</p>";
+  }
+  if (el.blindResultRows) el.blindResultRows.innerHTML = '<tr><td colspan="5">暂无数据</td></tr>';
+  if (el.blindAdvice) {
+    el.blindAdvice.innerHTML = `
+      <article>
+        <strong>测量建议</strong>
+        <p>盲测前建议至少重复 3 次落球测量，并记录温度；若温度波动超过 1℃，粘度匹配会明显变差。</p>
+      </article>
+    `;
+  }
+}
+
+function fillBlindFromLatestRun() {
+  const run = state.latest;
+  if (!run?.result || !run?.params) {
+    showToast("请先完成或载入一条实验记录。");
+    return;
+  }
+  if (el.blindTemperatureC) el.blindTemperatureC.value = finiteNumber(run.params.temperature_c, 25);
+  if (el.blindViscosity) el.blindViscosity.value = finiteNumber(run.result.viscosity, "") ?? "";
+  if (el.blindDensity) el.blindDensity.value = finiteNumber(run.params.rho_liquid, "") ?? "";
+  showToast("已填入当前实验结果，可补充颜色后匹配。");
 }
 
 function ensureSimulationNumber(value, label) {
@@ -4961,6 +5267,9 @@ function bind() {
   document.querySelectorAll("[data-question]").forEach((button) => {
     button.addEventListener("click", () => ask(button.dataset.question, button));
   });
+  el.runBlindTestBtn?.addEventListener("click", runBlindTest);
+  el.resetBlindTestBtn?.addEventListener("click", resetBlindTest);
+  el.fillBlindFromRunBtn?.addEventListener("click", fillBlindFromLatestRun);
   document.querySelectorAll("[data-go-view]").forEach((button) => {
     button.addEventListener("click", () => switchView(button.dataset.goView));
   });
