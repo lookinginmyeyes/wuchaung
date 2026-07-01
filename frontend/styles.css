@@ -2909,9 +2909,9 @@ input[type="range"]:focus-visible {
 
 .report-preview p {
   color: var(--muted);
-  font-size: 12px;
+  font-size: 15px;
   font-weight: 760;
-  line-height: 1.55;
+  line-height: 1.72;
 }
 
 .report-table-wrap {
@@ -2929,11 +2929,12 @@ input[type="range"]:focus-visible {
 
 .report-preview th,
 .report-preview td {
-  padding: 9px 10px;
+  padding: 12px 13px;
   border-bottom: 1px solid rgba(217, 221, 213, 0.76);
   color: #35443e;
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 780;
+  line-height: 1.55;
   text-align: left;
   vertical-align: top;
 }
