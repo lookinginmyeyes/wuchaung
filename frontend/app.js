@@ -5129,6 +5129,80 @@ function addMessage(type, text) {
   return message;
 }
 
+function reviewAgentContext() {
+  const run = state.latest;
+  if (!run?.result) {
+    return {
+      kind: "review",
+      loaded: false,
+      message: "学生尚未载入实验记录，只能回答通用误差来源和改进建议。",
+    };
+  }
+  const result = run.result || {};
+  const params = run.params || {};
+  const student = run.student || {};
+  const quality = run.quality || {};
+  const preprocessing = quality.preprocessing || {};
+  const segment = run.segment || {};
+  return {
+    kind: "review",
+    loaded: true,
+    id: run.id || null,
+    source: run.source || quality.fit_method || "unknown",
+    params: {
+      liquid: params.liquid,
+      temperature_c: params.temperature_c,
+      rho_liquid: params.rho_liquid,
+      eta_reference: params.eta_reference,
+      radius_mm: params.radius_mm,
+      rho_ball: params.rho_ball,
+      tube_diameter_mm: params.tube_diameter_mm,
+      liquid_depth_mm: params.liquid_depth_mm,
+    },
+    result: {
+      terminal_velocity: result.terminal_velocity,
+      ideal_viscosity: idealViscosityFromRun(run),
+      corrected_viscosity: result.viscosity,
+      r2: result.r2,
+      re: result.re,
+      tracking_confidence: result.tracking_confidence,
+      wall_correction: result.wall_correction,
+      reynolds_correction: result.reynolds_correction,
+    },
+    student: {
+      terminal_velocity: student.student_v,
+      viscosity: student.student_eta,
+      velocity_error: student.v_error,
+      viscosity_error: student.eta_error,
+      score: student.score,
+    },
+    quality: {
+      fit_method: quality.fit_method,
+      uniform_segment_cv: quality.uniform_segment_cv,
+      segment_start: segment.start,
+      segment_end: segment.end,
+      outlier_points: preprocessing.outlier_points,
+      removed_points: preprocessing.removed_points,
+      static_ignore_zones: preprocessing.static_ignore_zones,
+    },
+    diagnostics: Array.isArray(run.diagnostics)
+      ? run.diagnostics.map((item) => ({ level: item.level, title: item.title, message: item.message }))
+      : [],
+  };
+}
+
+function reviewAgentPrompt(question, context) {
+  return [
+    "你是落球法 AI 实验平台的实验记录复盘问答 agent。",
+    "任务：根据学生当前载入的实验数据，回答关于实验数据、误差来源、结果可信度和改进建议的问题。",
+    "回答要求：必须结合上下文中的 vt、η、R²、Re、壁效应、匀速段稳定性、追踪置信度、人工测量偏差或诊断项；不要泛泛而谈。",
+    "输出结构：先给一句结论，再说明主要证据，最后给 2-3 条可执行改进建议。",
+    "边界：如果没有载入记录，提醒学生先载入实验记录，再给通用建议。",
+    `学生问题：${question}`,
+    `当前实验记录上下文：${JSON.stringify(context, null, 2)}`,
+  ].join("\n");
+}
+
 async function ask(question, sourceButton = null) {
   if (!question.trim()) return;
   addMessage("user", question);
@@ -5139,9 +5213,13 @@ async function ask(question, sourceButton = null) {
   const pending = addMessage("ai pending", "正在根据实验讲义与测量规则生成答复...");
   setButtonLoading(sourceButton, true, "生成中");
   try {
+    const context = reviewAgentContext();
     const data = await api("/api/assistant/ask", {
       method: "POST",
-      body: JSON.stringify({ question }),
+      body: JSON.stringify({
+        question: reviewAgentPrompt(question, context),
+        context,
+      }),
     });
     pending.className = "message ai";
     renderAssistantAnswer(pending, data);

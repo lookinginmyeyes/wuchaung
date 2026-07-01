@@ -1011,6 +1011,39 @@ def local_quiz_tutor_answer(context: dict | None) -> str | None:
     return None
 
 
+def local_review_answer(context: dict | None) -> str | None:
+    if not isinstance(context, dict) or context.get("kind") != "review":
+        return None
+    if not context.get("loaded"):
+        return "请先在实验记录中载入一条记录，再提问这次数据为什么偏差大或哪里需要改进。通用复盘顺序是：先看 v-t 是否有稳定平台，再看 R²、Re、壁效应、追踪置信度，最后比较人工 vt 和 AI vt。"
+    result = context.get("result") or {}
+    student = context.get("student") or {}
+    quality = context.get("quality") or {}
+    diagnostics = context.get("diagnostics") or []
+    evidence = []
+    re = result.get("re")
+    r2 = result.get("r2")
+    confidence = result.get("tracking_confidence")
+    eta_error = student.get("viscosity_error")
+    if isinstance(r2, (int, float)):
+        evidence.append(f"R²={r2:.3f}")
+    if isinstance(re, (int, float)):
+        evidence.append(f"Re={re:.3f}")
+    if isinstance(confidence, (int, float)):
+        evidence.append(f"追踪置信度约 {confidence * 100:.0f}%")
+    if isinstance(eta_error, (int, float)):
+        evidence.append(f"人工粘度相对偏差约 {eta_error * 100:.1f}%")
+    if quality.get("uniform_segment_cv") is not None:
+        evidence.append(f"匀速段波动 CV={quality.get('uniform_segment_cv')}")
+    if diagnostics:
+        evidence.append("诊断项：" + "；".join(str(item.get("title", "")) for item in diagnostics[:3]))
+    evidence_text = "，".join(evidence) if evidence else "当前记录缺少足够质量指标"
+    return (
+        f"结论：这次结果应先从轨迹质量和物理适用条件两条线复核。主要证据是：{evidence_text}。"
+        "改进建议：第一，重新检查标定点和量筒中心线，保证小球沿中心下落；第二，复核 v-t 曲线平台段，不要把释放加速段或筒底扰动段纳入；第三，若 Re 偏高或壁效应偏大，优先换更小小球、更大内径量筒或更高粘度液体。"
+    )
+
+
 def local_answer_question(question: str, latest: dict | None) -> str:
     if not is_experiment_related_question(question):
         return "这个问题与落球法测粘、AI视觉测量、虚拟仿真、讲义、试题解析或实验误差分析无关，我不能在本系统中回答。"
@@ -1058,13 +1091,8 @@ def extract_chat_completion_text(payload: dict) -> str:
 
 
 def quiz_tutor_system_prompt(context: dict | None = None) -> str:
-    if not isinstance(context, dict) or not str(context.get("kind", "")).startswith("quiz"):
+    if isinstance(context, dict) and str(context.get("kind", "")).startswith("quiz"):
         return (
-            "你是一个中学/大学物理实验教师，只回答落球法测量液体粘滞系数、AI视觉测量、"
-            "虚拟仿真、实验讲义、试题解析和误差分析相关问题。若问题无关，直接拒答。"
-            "回答要先给结论，再给公式、原因和实验建议。"
-        )
-    return (
         "你是落球法 AI 实验平台的预习作业问答 agent。你的任务不是直接替学生背答案，"
         "而是根据学生在每道题上的真实选择进行针对性辅导。必须采用苏格拉底式教学："
         "先指出学生选择暴露出的概念卡点，再提出2到4个短问题引导学生自己修正。"
@@ -1072,6 +1100,20 @@ def quiz_tutor_system_prompt(context: dict | None = None) -> str:
         "不要展开成长篇条列，不要一次性把所有错题铺开；回答要短、具体、可追问。"
         "只回答落球法、Stokes 定律、终端速度、雷诺数、壁效应、标定、背光成像、AI视觉测量、误差分析和本次试题相关内容。"
         "最后给一个可执行的复习动作，例如回看讲义中的某个条件、画出受力平衡、检查 v-t 图平台段。"
+        )
+    if isinstance(context, dict) and context.get("kind") == "review":
+        return (
+            "你是落球法 AI 实验平台的实验记录复盘问答 agent。你要根据学生当前载入的实验记录，"
+            "回答关于实验数据、误差来源、可信度和改进建议的问题。必须结合上下文里的 vt、η、R²、Re、"
+            "壁效应修正、匀速段稳定性、追踪置信度、人工测量偏差和诊断项。"
+            "回答格式要短而专业：先给一句结论，再列主要证据，最后给2到3条可执行改进建议。"
+            "不要泛泛讲落球法；若没有载入记录，先要求学生载入记录，再给通用复盘方向。"
+            "只回答落球法、AI视觉测量、虚拟仿真、实验讲义、试题解析和误差分析相关问题。"
+        )
+    return (
+        "你是一个中学/大学物理实验教师，只回答落球法测量液体粘滞系数、AI视觉测量、"
+        "虚拟仿真、实验讲义、试题解析和误差分析相关问题。若问题无关，直接拒答。"
+        "回答要先给结论，再给公式、原因和实验建议。"
     )
 
 
@@ -1128,4 +1170,7 @@ def answer_question(question: str, latest: dict | None, context: dict | None = N
     local_quiz = local_quiz_tutor_answer(context)
     if local_quiz:
         return {"answer": local_quiz, "mode": "local", "sources": []}
+    local_review = local_review_answer(context)
+    if local_review:
+        return {"answer": local_review, "mode": "local", "sources": []}
     return {"answer": local_answer_question(question, latest), "mode": "local", "sources": []}
