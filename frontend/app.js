@@ -830,8 +830,12 @@ function payload() {
 }
 
 function validateExperimentInputs({ requireReference = false } = {}) {
+  const liquidName = el.liquid.value.trim();
+  if (!liquidName) {
+    showToast("请先填写：样本液体");
+    return false;
+  }
   const checks = [
-    [el.liquid.value.trim(), "样本液体"],
     [number(el.rhoLiquid), "液体密度"],
     [number(el.radiusMm), "小球半径"],
     [number(el.tubeDiameterMm), "量筒内径"],
