@@ -66,6 +66,10 @@ class PlatformHandler(BaseHTTPRequestHandler):
             if not run:
                 self.send_error(404, "Run not found")
                 return
+            student = run.get("student") or {}
+            if not student.get("student_v") or not student.get("student_eta"):
+                self.send_json({"error": "请先提交人工终端速度和人工粘滞系数，再生成实验报告。"}, status=400)
+                return
             self.send_text(build_report_text(run), filename=f"run-{run_id}-report.md")
             return
         if parsed.path.startswith("/api/runs/"):

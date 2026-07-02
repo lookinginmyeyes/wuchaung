@@ -1124,6 +1124,17 @@ function fillExperimentInputsFromRun(run) {
   setInputValue(el.liquidDepthMm, params.liquid_depth_mm);
 }
 
+function hasStudentMeasurement(run) {
+  const student = run?.student || {};
+  const studentV = finiteNumber(student.student_v);
+  const studentEta = finiteNumber(student.student_eta);
+  return studentV !== null && studentV > 0 && studentEta !== null && studentEta > 0;
+}
+
+function shouldLockRunResults(run) {
+  return Boolean(run?.id) && !hasStudentMeasurement(run);
+}
+
 function payload() {
   return {
     params: {
@@ -1296,6 +1307,8 @@ async function uploadTrajectory() {
   try {
     const text = await file.text();
     const trajectory = parseTrajectoryCsv(text);
+    if (el.studentV) el.studentV.value = "";
+    if (el.studentEta) el.studentEta.value = "";
     const body = payload();
     body.trajectory = trajectory;
     const run = await api("/api/measurements/trajectory", {
@@ -1305,8 +1318,8 @@ async function uploadTrajectory() {
     state.latest = run;
     renderRun(run);
     await loadRecords();
-    updateFileQueue(file.name, "已完成", `已保存记录 #${run.id}`);
-    showToast(`轨迹CSV分析完成，已保存记录 #${run.id}`);
+    updateFileQueue(file.name, "待人工测量", `已保存记录 #${run.id}。请先输入人工测量值后查看 AI 结果。`);
+    showToast("轨迹分析完成。请先填写人工测量值，再查看 AI 结果。");
   } catch (error) {
     updateFileQueue(file.name, "失败", error.message);
     showToast(`CSV分析失败：${error.message}`);
@@ -2336,6 +2349,8 @@ async function startLiveRecording() {
     window.clearTimeout(state.liveFrameTimer);
     state.liveFrameTimer = null;
   }
+  if (el.studentV) el.studentV.value = "";
+  if (el.studentEta) el.studentEta.value = "";
   state.liveOffsetTerminated = false;
   state.calibrationVisualsHidden = true;
   resetFallOffsetStatus();
@@ -3228,11 +3243,11 @@ async function finalizeLiveTracking() {
     renderRun(run);
     await loadRecords();
     if (el.liveModelStatus) el.liveModelStatus.textContent = "实时追踪完成";
-    if (el.liveReadinessLabel) el.liveReadinessLabel.textContent = "实时结果已生成";
-    if (el.liveReadinessDetail) el.liveReadinessDetail.textContent = `已实时追踪 ${trajectory.length} 个点，并完成终端速度、理想η、修正η和不确定度计算。`;
+    if (el.liveReadinessLabel) el.liveReadinessLabel.textContent = "等待人工测量";
+    if (el.liveReadinessDetail) el.liveReadinessDetail.textContent = `已实时追踪 ${trajectory.length} 个点并保存记录。请先输入人工终端速度 vt 和人工粘滞系数 η，再点击评分并生成报告查看 AI 结果。`;
     const archiveText = run.video?.url ? "，录像已归档" : videoArchiveError ? `，录像归档失败：${videoArchiveError}` : "";
-    updateFileQueue("实时追踪结果", "已完成", `已保存记录 #${run.id}，实时轨迹点 ${trajectory.length} 个${archiveText}。`);
-    showToast(`实时追踪完成，已保存记录 #${run.id}`);
+    updateFileQueue("实时追踪结果", "待人工测量", `已保存记录 #${run.id}，实时轨迹点 ${trajectory.length} 个${archiveText}。请输入人工测量值后查看 AI 结果。`);
+    showToast("实时追踪完成。请先填写人工测量值，再查看 AI 结果。");
   } catch (error) {
     updateFileQueue("实时追踪结果", "失败", error.message);
     if (el.liveModelStatus) el.liveModelStatus.textContent = "计算失败";
@@ -3332,6 +3347,8 @@ async function trackSelectedVideo(file) {
   if (trajectory.length < 12) {
     throw new Error("OpenCV识别到的有效轨迹点不足，请提高对比度、缩小ROI或重新拍摄。");
   }
+  if (el.studentV) el.studentV.value = "";
+  if (el.studentEta) el.studentEta.value = "";
   const body = payload();
   body.trajectory = trajectory;
   body.source = "video";
@@ -3351,8 +3368,8 @@ async function trackSelectedVideo(file) {
   await loadRecords();
   const meta = tracked.metadata || {};
   const archiveText = run.video?.url ? "，视频已归档" : videoArchiveError ? `，视频归档失败：${videoArchiveError}` : "";
-  updateFileQueue(file.name, "已完成", `OpenCV提取 ${trajectory.length} 个轨迹点，检测帧 ${meta.detected_frames ?? "--"}/${meta.processed_frames ?? "--"}，已保存记录 #${run.id}${archiveText}`);
-  showToast(`视频追踪完成，已保存记录 #${run.id}`);
+  updateFileQueue(file.name, "待人工测量", `OpenCV提取 ${trajectory.length} 个轨迹点，检测帧 ${meta.detected_frames ?? "--"}/${meta.processed_frames ?? "--"}，已保存记录 #${run.id}${archiveText}。请输入人工测量值后查看 AI 结果。`);
+  showToast("视频追踪完成。请先填写人工测量值，再查看 AI 结果。");
 }
 
 function appendNonlinearCorrectionParams(params) {
@@ -3524,6 +3541,16 @@ function renderEmptyState() {
 
 function renderUncertainty(run = state.latest) {
   if (!el.uncertaintyStatus) return;
+  if (shouldLockRunResults(run)) {
+    el.uncertaintyStatus.textContent = "待人工测量";
+    el.uncertaintyDiameterTerm.textContent = "--";
+    el.uncertaintyTimingTerm.textContent = "--";
+    el.uncertaintyCombined.textContent = "--";
+    el.uncertaintyStandard.textContent = "--";
+    el.uncertaintyExpanded.textContent = "--";
+    el.uncertaintyExpression.textContent = "请先输入人工终端速度和人工粘滞系数，评分后再显示 AI 结果与不确定度。";
+    return;
+  }
   if (!run?.result || !run?.params) {
     el.uncertaintyStatus.textContent = "待导入";
     el.uncertaintyDiameterTerm.textContent = "--";
@@ -4085,9 +4112,17 @@ function renderRun(run) {
   const quality = run.quality || {};
   const preprocessing = quality.preprocessing || {};
   const idealEta = idealViscosityFromRun(run);
+  const locked = shouldLockRunResults(run);
   fillExperimentInputsFromRun(run);
   if (el.studentV) el.studentV.value = finiteNumber(student.student_v) === null ? "" : String(student.student_v);
   if (el.studentEta) el.studentEta.value = finiteNumber(student.student_eta) === null ? "" : String(student.student_eta);
+  el.runBadge.textContent = run.id ? `记录 #${run.id}` : "仿真对照";
+  if (el.scoreReportBtn) el.scoreReportBtn.disabled = !run.id;
+  if (locked) {
+    renderLockedRunResults(run);
+    drawChart();
+    return;
+  }
   el.terminalVelocity.textContent = `${result.terminal_velocity.toFixed(4)} m/s`;
   el.uniformSegmentLength.textContent = formatUniformSegmentLength(estimateUniformSegmentSpan(run, result.terminal_velocity));
   el.idealViscosity.textContent = idealEta === null ? "--" : `${formatPaS(idealEta)} Pa·s`;
@@ -4103,8 +4138,6 @@ function renderRun(run) {
     ? `${Math.round(Number(result.tracking_confidence) * 100)}%`
     : "--";
   el.score.textContent = formatScore(student.score);
-  if (el.scoreReportBtn) el.scoreReportBtn.disabled = !run.id;
-  el.runBadge.textContent = run.id ? `记录 #${run.id}` : "仿真对照";
   if (run.id) {
     el.downloadReport.href = apiUrl(`/api/runs/${run.id}/report`);
     el.downloadReport.classList.remove("disabled");
@@ -4118,6 +4151,32 @@ function renderRun(run) {
   renderStudentScoreTable(run);
   renderUncertainty(run);
   drawChart();
+}
+
+function renderLockedRunResults(run) {
+  el.terminalVelocity.textContent = "待人工测量";
+  el.uniformSegmentLength.textContent = "--";
+  el.idealViscosity.textContent = "待人工测量";
+  el.viscosity.textContent = "待人工测量";
+  el.r2.textContent = "--";
+  el.re.textContent = "--";
+  el.fitMethod.textContent = "--";
+  el.outlierCount.textContent = "--";
+  el.segmentCv.textContent = "--";
+  el.trackingConfidence.textContent = "--";
+  el.score.textContent = "待评分";
+  el.downloadReport.href = "#";
+  el.downloadReport.classList.add("disabled");
+  clearReportPreview();
+  renderDiagnostics([
+    {
+      level: "warn",
+      title: "请先完成人工测量",
+      message: `记录 #${run.id} 已完成 AI 追踪与后台计算。为保证学生先独立完成实验，请输入人工终端速度 vt 和人工粘滞系数 η，再点击“评分并生成报告”查看 AI 结果。`,
+    },
+  ]);
+  renderStudentScoreTable(run);
+  renderUncertainty(run);
 }
 
 function renderStudentScoreTable(run) {
@@ -4801,6 +4860,13 @@ function renderRecordsTable() {
 function renderRecordRow(row) {
   const rowId = String(row.id);
   const checked = state.selectedRecordIds.has(rowId) ? "checked" : "";
+  const hasStudentMeasurement = row.has_student_measurement === true;
+  const velocityCell = hasStudentMeasurement
+    ? row.terminal_velocity.toFixed(4)
+    : `<span class="record-video-badge">待人工测量</span>`;
+  const viscosityCell = hasStudentMeasurement
+    ? row.viscosity.toFixed(3)
+    : `<span class="record-video-badge">待人工测量</span>`;
   return `
     <tr>
       <td class="select-cell">
@@ -4809,8 +4875,8 @@ function renderRecordRow(row) {
       <td>${row.id}</td>
       <td>${escapeHtml(row.created_at.replace("T", " "))}</td>
       <td>${escapeHtml(row.liquid)}</td>
-      <td>${row.terminal_velocity.toFixed(4)}</td>
-      <td>${row.viscosity.toFixed(3)}</td>
+      <td>${velocityCell}</td>
+      <td>${viscosityCell}</td>
       <td><span class="record-video-badge ${row.has_video ? "is-ready" : ""}">${row.has_video ? "可回放" : "无录像"}</span></td>
       <td class="record-row-actions">
         <button class="table-action" type="button" data-load-run="${row.id}">
@@ -4990,6 +5056,19 @@ function drawChart() {
     ctx.font = "800 22px system-ui";
     ctx.textAlign = "center";
     ctx.fillText("导入真实 CSV 后显示曲线", width / 2, height / 2);
+    return;
+  }
+
+  if (shouldLockRunResults(state.latest)) {
+    ctx.save();
+    ctx.fillStyle = "rgba(106, 114, 109, 0.9)";
+    ctx.font = "900 24px system-ui";
+    ctx.textAlign = "center";
+    ctx.fillText("AI 结果待人工测量后显示", width / 2, height / 2 - 12);
+    ctx.font = "700 15px system-ui";
+    ctx.fillStyle = "rgba(106, 114, 109, 0.72)";
+    ctx.fillText("请先填写人工 vt 和人工 η，再点击评分并生成报告", width / 2, height / 2 + 24);
+    ctx.restore();
     return;
   }
 

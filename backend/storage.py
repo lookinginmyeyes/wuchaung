@@ -222,7 +222,9 @@ def list_runs(limit: int | None = None) -> list[dict]:
     for row in rows:
         record = dict(row)
         payload = json.loads(record.pop("payload"))
+        student = payload.get("student") or {}
         video = payload.get("video") or {}
+        record["has_student_measurement"] = bool(student.get("student_v") and student.get("student_eta"))
         record["has_video"] = bool(video.get("url"))
         record["video_url"] = video.get("url")
         records.append(record)
@@ -402,7 +404,9 @@ def supabase_list_runs(limit: int | None = None) -> list[dict]:
         payload = row.pop("payload") or {}
         if isinstance(payload, str):
             payload = json.loads(payload)
+        student = payload.get("student") or {}
         video = payload.get("video") or {}
+        row["has_student_measurement"] = bool(student.get("student_v") and student.get("student_eta"))
         row["has_video"] = bool(video.get("url"))
         row["video_url"] = video.get("url")
         records.append(row)
