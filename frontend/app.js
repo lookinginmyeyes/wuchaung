@@ -224,6 +224,8 @@ const el = {
   terminalVelocity: document.getElementById("terminalVelocity"),
   uniformSegmentLength: document.getElementById("uniformSegmentLength"),
   idealViscosity: document.getElementById("idealViscosity"),
+  standardViscosityRange: document.getElementById("standardViscosityRange"),
+  standardViscosityNote: document.getElementById("standardViscosityNote"),
   viscosity: document.getElementById("viscosity"),
   r2: document.getElementById("r2"),
   re: document.getElementById("re"),
@@ -560,6 +562,81 @@ const presets = {
   "纯甘油 20℃": { rhoLiquid: 1263, etaReference: 1.412, temperatureC: 20 },
   "蓖麻油 25℃": { rhoLiquid: 961, etaReference: 0.65, temperatureC: 25 },
 };
+
+const standardViscosityReferences = [
+  {
+    label: "纯水",
+    aliases: ["纯水", "水"],
+    refTempC: 20,
+    viscosityPaS: 0.0010016,
+    beta: 1850,
+    tolerance: 0.06,
+    source: "NIST/表值",
+  },
+  {
+    label: "无水乙醇",
+    aliases: ["乙醇", "酒精"],
+    refTempC: 20,
+    viscosityPaS: 0.0012,
+    beta: 1500,
+    tolerance: 0.08,
+    source: "物性表值",
+  },
+  {
+    label: "乙二醇",
+    aliases: ["乙二醇"],
+    refTempC: 20,
+    viscosityPaS: 0.0198,
+    beta: 3300,
+    tolerance: 0.1,
+    source: "物性表值",
+  },
+  {
+    label: "丙二醇",
+    aliases: ["丙二醇"],
+    refTempC: 25,
+    viscosityPaS: 0.0486,
+    beta: 4100,
+    tolerance: 0.12,
+    source: "物性表值",
+  },
+  {
+    label: "500 cSt 硅油",
+    aliases: ["500 cst", "500cst", "硅油"],
+    refTempC: 25,
+    viscosityPaS: 0.485,
+    beta: 2600,
+    tolerance: 0.12,
+    source: "运动粘度换算",
+  },
+  {
+    label: "蓖麻油",
+    aliases: ["蓖麻油"],
+    refTempC: 25,
+    viscosityPaS: 0.82,
+    beta: 5200,
+    tolerance: 0.38,
+    source: "天然油表值",
+  },
+  {
+    label: "纯甘油",
+    aliases: ["纯甘油", "甘油", "glycerol"],
+    refTempC: 25,
+    viscosityPaS: 0.945,
+    beta: 6200,
+    tolerance: 0.09,
+    source: "甘油表值",
+  },
+  {
+    label: "食用植物油",
+    aliases: ["食用植物油", "植物油", "食用油"],
+    refTempC: 25,
+    viscosityPaS: 0.065,
+    beta: 4300,
+    tolerance: 0.35,
+    source: "品类范围",
+  },
+];
 
 const blindLiquidCandidates = [
   {
@@ -1030,6 +1107,15 @@ function formatPaS(value) {
   return parsed.toExponential(2);
 }
 
+function formatViscosityRange(lower, upper) {
+  const safeLower = finiteNumber(lower);
+  const safeUpper = finiteNumber(upper);
+  if (safeLower === null || safeUpper === null || safeLower <= 0 || safeUpper <= 0) return "--";
+  if (safeUpper < 0.01) return `${(safeLower * 1000).toFixed(2)}–${(safeUpper * 1000).toFixed(2)} mPa·s`;
+  if (safeUpper < 0.1) return `${safeLower.toFixed(4)}–${safeUpper.toFixed(4)} Pa·s`;
+  return `${safeLower.toFixed(3)}–${safeUpper.toFixed(3)} Pa·s`;
+}
+
 function formatMeasurement(value, unit, digits = 6) {
   const parsed = finiteNumber(value);
   if (parsed === null) return "未填写";
@@ -1058,6 +1144,63 @@ function idealViscosityFromRun(run) {
   }
   const radiusM = radiusMm / 1000;
   return (2 * radiusM * radiusM * (rhoBall - rhoLiquid) * 9.80665) / (9 * terminalVelocity);
+}
+
+function estimateReferenceViscosityAtTemperature(reference, temperatureC) {
+  const refTempK = reference.refTempC + 273.15;
+  const sampleTempK = temperatureC + 273.15;
+  return reference.viscosityPaS * Math.exp(reference.beta * ((1 / sampleTempK) - (1 / refTempK)));
+}
+
+function findStandardViscosityReference(liquidName) {
+  const normalized = String(liquidName || "").trim().toLowerCase();
+  if (!normalized) return null;
+  return standardViscosityReferences.find((reference) =>
+    reference.aliases.some((alias) => normalized.includes(alias.toLowerCase()))
+  ) || null;
+}
+
+function standardViscosityIntervalFromRun(run) {
+  const params = run?.params || {};
+  const liquidName = params.liquid || el.liquid?.value || "";
+  const reference = findStandardViscosityReference(liquidName);
+  if (!reference) return null;
+  const temperature = finiteNumber(params.temperature_c)
+    ?? finiteNumber(el.temperatureC?.value)
+    ?? reference.refTempC;
+  const center = estimateReferenceViscosityAtTemperature(reference, temperature);
+  if (!Number.isFinite(center) || center <= 0) return null;
+  const lower = center * (1 - reference.tolerance);
+  const upper = center * (1 + reference.tolerance);
+  return {
+    label: reference.label,
+    temperature,
+    lower,
+    upper,
+    source: reference.source,
+  };
+}
+
+function renderStandardViscosityRange(run, status = "normal") {
+  if (!el.standardViscosityRange || !el.standardViscosityNote) return;
+  if (status === "empty") {
+    el.standardViscosityRange.textContent = "--";
+    el.standardViscosityNote.textContent = "按样本温度估算";
+    return;
+  }
+  if (status === "locked") {
+    el.standardViscosityRange.textContent = "待人工测量";
+    el.standardViscosityNote.textContent = "提交人工值后显示";
+    return;
+  }
+  const interval = standardViscosityIntervalFromRun(run);
+  if (!interval) {
+    el.standardViscosityRange.textContent = "--";
+    el.standardViscosityNote.textContent = "未匹配到样本表值";
+    return;
+  }
+  el.standardViscosityRange.textContent = formatViscosityRange(interval.lower, interval.upper);
+  el.standardViscosityNote.textContent = `${interval.label} ${interval.temperature.toFixed(1)}℃ · ${interval.source}`;
 }
 
 function estimateUniformSegmentSpan(run, terminalVelocity) {
@@ -3140,6 +3283,7 @@ function renderLiveTrackingPreview() {
   el.terminalVelocity.textContent = "--";
   el.uniformSegmentLength.textContent = "--";
   el.idealViscosity.textContent = "--";
+  renderStandardViscosityRange(run, "empty");
   el.viscosity.textContent = "--";
   el.r2.textContent = "--";
   el.re.textContent = "--";
@@ -3514,6 +3658,7 @@ function renderEmptyState() {
   el.terminalVelocity.textContent = "--";
   el.uniformSegmentLength.textContent = "--";
   el.idealViscosity.textContent = "--";
+  renderStandardViscosityRange(null, "empty");
   el.viscosity.textContent = "--";
   el.r2.textContent = "--";
   el.re.textContent = "--";
@@ -4126,6 +4271,7 @@ function renderRun(run) {
   el.terminalVelocity.textContent = `${result.terminal_velocity.toFixed(4)} m/s`;
   el.uniformSegmentLength.textContent = formatUniformSegmentLength(estimateUniformSegmentSpan(run, result.terminal_velocity));
   el.idealViscosity.textContent = idealEta === null ? "--" : `${formatPaS(idealEta)} Pa·s`;
+  renderStandardViscosityRange(run);
   el.viscosity.textContent = `${formatPaS(result.viscosity)} Pa·s`;
   el.r2.textContent = result.r2.toFixed(3);
   el.re.textContent = result.re.toFixed(3);
@@ -4157,6 +4303,7 @@ function renderLockedRunResults(run) {
   el.terminalVelocity.textContent = "待人工测量";
   el.uniformSegmentLength.textContent = "--";
   el.idealViscosity.textContent = "待人工测量";
+  renderStandardViscosityRange(run, "locked");
   el.viscosity.textContent = "待人工测量";
   el.r2.textContent = "--";
   el.re.textContent = "--";
