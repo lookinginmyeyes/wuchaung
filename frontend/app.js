@@ -2621,27 +2621,27 @@ function liveFrameBlob() {
   liveFrameBlob.canvas = canvas;
   const scale = Math.min(1, LIVE_FRAME_MAX_WIDTH / video.videoWidth);
   state.liveFrameScale = scale;
-  canvas.width = Math.max(1, Math.round(video.videoWidth * scale));
-  canvas.height = Math.max(1, Math.round(video.videoHeight * scale));
-  const frameCtx = canvas.getContext("2d", { willReadFrequently: true });
-  frameCtx.drawImage(video, 0, 0, canvas.width, canvas.height);
-  return new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", LIVE_FRAME_JPEG_QUALITY));
-}
 
-function appendRoiParams(params, media, scale = 1) {
-  if (!state.roiRect || !media?.videoWidth || !media?.videoHeight) return;
   const roi = state.roiRect;
-  const frameWidth = Math.max(1, Math.round(media.videoWidth * scale));
-  const frameHeight = Math.max(1, Math.round(media.videoHeight * scale));
-  const x = Math.round((roi.xPct / 100) * frameWidth);
-  const y = Math.round((roi.yPct / 100) * frameHeight);
-  const width = Math.round((roi.wPct / 100) * frameWidth);
-  const height = Math.round((roi.hPct / 100) * frameHeight);
-  if (width <= 0 || height <= 0) return;
-  params.set("roi_x", String(x));
-  params.set("roi_y", String(y));
-  params.set("roi_w", String(width));
-  params.set("roi_h", String(height));
+  if (roi) {
+    // Crop: only send the ROI region to the backend
+    const sx = Math.round(roi.xPct / 100 * video.videoWidth);
+    const sy = Math.round(roi.yPct / 100 * video.videoHeight);
+    const sw = Math.round(roi.wPct / 100 * video.videoWidth);
+    const sh = Math.round(roi.hPct / 100 * video.videoHeight);
+    const cw = Math.max(1, Math.round(sw * scale));
+    const ch = Math.max(1, Math.round(sh * scale));
+    canvas.width = cw;
+    canvas.height = ch;
+    const frameCtx = canvas.getContext("2d", { willReadFrequently: true });
+    frameCtx.drawImage(video, sx, sy, sw, sh, 0, 0, cw, ch);
+  } else {
+    canvas.width = Math.max(1, Math.round(video.videoWidth * scale));
+    canvas.height = Math.max(1, Math.round(video.videoHeight * scale));
+    const frameCtx = canvas.getContext("2d", { willReadFrequently: true });
+    frameCtx.drawImage(video, 0, 0, canvas.width, canvas.height);
+  }
+  return new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", LIVE_FRAME_JPEG_QUALITY));
 }
 
 async function postLiveFrame(blob, frameTimestamp, frameIndex) {
@@ -2650,12 +2650,13 @@ async function postLiveFrame(blob, frameTimestamp, frameIndex) {
     t: String(frameTimestamp.toFixed(4)),
     min_radius_px: "3",
   });
-  if (!state.roiRect && state.liveIgnoreZones.length) {
+  if (state.liveIgnoreZones.length) {
     params.set("ignore_zones", JSON.stringify(state.liveIgnoreZones));
   }
   const scale = estimateScaleMetersPerPixel();
   if (scale) params.set("scale_m_per_px", String(scale / Math.max(state.liveFrameScale || 1, 1e-6)));
-  appendRoiParams(params, el.livePreview, state.liveFrameScale || 1);
+  // ROI cropping is now done in liveFrameBlob() before sending,
+  // so no need to pass roi params to backend.
   appendNonlinearCorrectionParams(params);
   const response = await fetch(apiUrl(`/api/video/frame?${params.toString()}`), {
     method: "POST",
@@ -2750,10 +2751,20 @@ function updateLiveStaticIgnoreZones(result) {
 }
 
 function liveDetectionToTrajectoryPoint(result) {
+  // When ROI is active, the backend sees a cropped frame.
+  // Map x back from ROI-local normalised coords to full-frame normalised coords
+  // so the red-dot marker renders at the correct screen position.
+  let xNorm = Number(result.x ?? 0.5);
+  const roi = state.roiRect;
+  if (roi) {
+    // result.x is 0-1 within the cropped ROI image
+    // Convert to full-frame 0-1: roiLeft% + result.x * roiWidth%
+    xNorm = (roi.xPct + xNorm * roi.wPct) / 100;
+  }
   return {
     frame: result.frame ?? state.liveTrackingFrame,
     t: Number(result.t ?? ((performance.now() - state.liveTrackingStart) / 1000)),
-    x: Number(result.x ?? 0.5),
+    x: xNorm,
     y: Number(result.y),
     measured_y: Number(result.measured_y ?? result.y),
     corrected_y: Number(result.corrected_y ?? result.y),
@@ -3074,9 +3085,14 @@ function updateFallOffsetStatus(point) {
   state.lastFallOffset = { ballPct, centerPct, widthPct, thresholdPct, offsetPctOfCylinder, state: stateName };
 
   if (el.ballOffsetMarker) {
-    const yNorm = Number.isFinite(point.y_px) && Number.isFinite(point.frame_height)
+    let yNorm = Number.isFinite(point.y_px) && Number.isFinite(point.frame_height)
       ? point.y_px / Math.max(point.frame_height, 1)
       : 0.5;
+    // When ROI is active, map y back to full-frame normalised coords
+    const roi = state.roiRect;
+    if (roi) {
+      yNorm = (roi.yPct + yNorm * roi.hPct) / 100;
+    }
     const display = mediaNormToLayerPoint(point.x, yNorm, livePreviewFrame()?.getBoundingClientRect());
     el.ballOffsetMarker.hidden = false;
     el.ballOffsetMarker.style.left = `${display.xPct}%`;
@@ -3310,7 +3326,6 @@ async function trackSelectedVideo(file) {
     use_norfair: "false",
   });
   if (scale) params.set("scale_m_per_px", String(scale));
-  appendRoiParams(params, el.videoPreview, 1);
   appendNonlinearCorrectionParams(params);
   const response = await fetch(apiUrl(`/api/video/track?${params.toString()}`), {
     method: "POST",
