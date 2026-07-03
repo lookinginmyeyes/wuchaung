@@ -85,6 +85,7 @@ const state = {
   lectureStarted: false,
   lectureRead: false,
   simulation: null,
+  quizSubmitted: false,
   quizAnswers: {},
   quizTutorContext: null,
   quizDialogQuestion: null,
@@ -3887,7 +3888,7 @@ function renderQuizQuestions() {
     const legend = document.createElement("legend");
     legend.innerHTML = `
       <span>第 ${index + 1} 题 · ${question.type} · ${question.points} 分</span>
-      <button class="quiz-question-help" type="button" data-quiz-help="${question.key}">问这题</button>
+      <button class="quiz-question-help" type="button" data-quiz-help="${question.key}" disabled>问这题</button>
       ${question.title}
     `;
     fieldset.appendChild(legend);
@@ -3905,6 +3906,23 @@ function renderQuizQuestions() {
     el.quizQuestionList.appendChild(fieldset);
   });
   updateExamProgress();
+  updateQuizTutorAvailability();
+}
+
+function updateQuizTutorAvailability() {
+  const enabled = Boolean(state.quizSubmitted && state.quizTutorContext);
+  document.querySelectorAll("[data-quiz-help]").forEach((button) => {
+    button.disabled = !enabled;
+    button.title = enabled ? "围绕这道题继续提问" : "提交测验后开放单题问答";
+  });
+  if (el.quizTutorInput) {
+    el.quizTutorInput.disabled = !enabled;
+    el.quizTutorInput.placeholder = enabled
+      ? "继续提问：例如为什么要拟合终端速度？"
+      : "提交测验后可继续提问";
+  }
+  const tutorSubmit = el.quizTutorForm?.querySelector("button[type='submit']");
+  if (tutorSubmit) tutorSubmit.disabled = !enabled;
 }
 
 function isExperimentRelatedQuestion(question) {
@@ -4051,6 +4069,7 @@ function renderQuizTutorFeedback(formData, score) {
       <strong>本次 ${score}/100，全部正确。</strong>
       <p id="quizAiSummary">AI 正在根据你的作答生成简短学习建议...</p>
     `;
+    updateQuizTutorAvailability();
     requestQuizGradingSummary();
     return;
   }
@@ -4075,6 +4094,7 @@ function renderQuizTutorFeedback(formData, score) {
         .join("")}
     </div>
   `;
+  updateQuizTutorAvailability();
   requestQuizGradingSummary();
 }
 
@@ -4097,6 +4117,10 @@ async function requestQuizGradingSummary() {
 
 async function askQuizTutor(question, sourceButton = null, context = null, target = "panel") {
   if (!question.trim()) return;
+  if (!state.quizSubmitted || !state.quizTutorContext) {
+    showToast("请先提交测验，再和 AI 助教提问。");
+    return;
+  }
   const addMessage = target === "dialog" ? addQuizDialogMessage : addQuizTutorMessage;
   addMessage("user", question);
   const pending = addMessage("ai pending", "正在根据讲义、题目和你的选择生成引导...");
@@ -4130,6 +4154,10 @@ function addQuizDialogMessage(type, text) {
 }
 
 function openQuizQuestionDialog(questionKey) {
+  if (!state.quizSubmitted || !state.quizTutorContext) {
+    showToast("请先提交测验，再打开单题问答。");
+    return;
+  }
   const context = quizQuestionContext(questionKey);
   if (!context) return;
   state.quizDialogQuestion = context;
@@ -4164,6 +4192,7 @@ function evaluateQuiz(event) {
     return;
   }
   state.quizAnswers = Object.fromEntries(quizQuestions.map((item) => [item.key, data.get(item.key)]));
+  state.quizSubmitted = true;
   const score = quizQuestions.reduce((sum, item) => sum + (data.get(item.key) === item.answer ? item.points : 0), 0);
   el.quizScore.textContent = `${score}/100`;
   renderQuizTutorFeedback(data, score);
@@ -4194,15 +4223,17 @@ function resetQuiz() {
   el.quizResult.textContent = "完成测验后，系统会判断是否允许进入大厅。";
   el.quizResult.className = "quiz-result";
   el.quizTutorPanel.hidden = false;
-  el.quizTutorSummary.textContent = "做题时可以点击每道题右侧的“问这题”，也可以在下方直接提问；提交测验后，系统会在这里给出错题总结和针对分析。";
+  el.quizTutorSummary.textContent = "提交测验后，系统会根据你的作答开放问答，并给出错题总结和针对分析。";
   el.quizTutorChat.innerHTML = "";
   el.quizTutorInput.value = "";
+  state.quizSubmitted = false;
   state.quizAnswers = {};
   state.quizTutorContext = null;
   closeQuizQuestionDialog();
   el.retryQuizBtn.hidden = true;
   el.enterHallBtn.hidden = true;
   updateExamProgress();
+  updateQuizTutorAvailability();
 }
 
 function switchView(viewName) {

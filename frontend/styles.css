@@ -3791,6 +3791,18 @@ input[type="range"]:focus-visible {
   cursor: pointer;
 }
 
+.quiz-question-help:disabled {
+  color: rgba(119, 88, 82, 0.72);
+  background: rgba(247, 242, 237, 0.78);
+  border-color: rgba(175, 157, 144, 0.36);
+  box-shadow: none;
+  cursor: not-allowed;
+}
+
+.quiz-question-help:disabled::before {
+  background: rgba(119, 88, 82, 0.52);
+}
+
 .quiz-question-help::before {
   content: "?";
   display: inline-grid;
