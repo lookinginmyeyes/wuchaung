@@ -5,3 +5,4 @@ __pycache__/
 /*.png
 data/
 .DS_Store
+.env

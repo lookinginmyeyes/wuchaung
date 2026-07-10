@@ -9,12 +9,12 @@ from urllib.parse import parse_qs, unquote, urlparse
 try:
     from .modules import module_summary, readiness_summary
     from .physics import analyze_trajectory, answer_question, build_diagnostics, build_params, build_simulation, inspect_video_metadata, to_optional_float
-    from .storage import VIDEO_DIR, attach_run_video, build_report_text, delete_run, delete_runs, get_run, init_db, latest_run, list_runs, save_run, storage_status, update_run_payload
+    from .storage import VIDEO_DIR, build_report_text, delete_run, delete_runs, get_run, init_db, latest_run, list_runs, read_supabase_video_asset, save_run, save_run_video, storage_status, update_run_payload, use_supabase_storage
     from .vision import build_video_track_config, detect_ball_from_image_bytes, extract_trajectory_from_video_bytes, inspect_vision_runtime
 except ImportError:
     from modules import module_summary, readiness_summary
     from physics import analyze_trajectory, answer_question, build_diagnostics, build_params, build_simulation, inspect_video_metadata, to_optional_float
-    from storage import VIDEO_DIR, attach_run_video, build_report_text, delete_run, delete_runs, get_run, init_db, latest_run, list_runs, save_run, storage_status, update_run_payload
+    from storage import VIDEO_DIR, build_report_text, delete_run, delete_runs, get_run, init_db, latest_run, list_runs, read_supabase_video_asset, save_run, save_run_video, storage_status, update_run_payload, use_supabase_storage
     from vision import build_video_track_config, detect_ball_from_image_bytes, extract_trajectory_from_video_bytes, inspect_vision_runtime
 
 
@@ -294,10 +294,7 @@ class PlatformHandler(BaseHTTPRequestHandler):
         if suffix == ".jpe":
             suffix = ".jpg"
         filename = f"run-{run_id}-{int(time.time())}{suffix}"
-        VIDEO_DIR.mkdir(parents=True, exist_ok=True)
-        target = VIDEO_DIR / filename
-        target.write_bytes(self.rfile.read(size))
-        video = attach_run_video(run_id, filename, content_type, size)
+        video = save_run_video(run_id, filename, content_type, self.rfile.read(size))
         self.send_json({"video": video})
 
     def handle_video_asset(self, path: str, head_only: bool = False) -> None:
@@ -309,6 +306,18 @@ class PlatformHandler(BaseHTTPRequestHandler):
             self.send_error(404, "Video not found")
             return
         if not target.exists() or not target.is_file():
+            if use_supabase_storage():
+                asset = read_supabase_video_asset(filename, self.headers.get("Range"))
+                if asset:
+                    self.send_response(asset["status"])
+                    self.send_header("Content-Type", asset["content_type"])
+                    for header, value in asset["headers"].items():
+                        if value:
+                            self.send_header(header, str(value))
+                    self.end_headers()
+                    if not head_only:
+                        self.wfile.write(asset["body"])
+                    return
             self.send_error(404, "Video not found")
             return
 

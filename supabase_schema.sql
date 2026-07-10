@@ -14,3 +14,17 @@ create table if not exists public.runs (
 create index if not exists runs_created_at_idx on public.runs (created_at desc);
 create index if not exists runs_source_idx on public.runs (source);
 
+-- Optional video archive bucket. Keep it private; the backend proxies /api/videos/* with the service role key.
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values (
+    'falling-ball-videos',
+    'falling-ball-videos',
+    false,
+    209715200,
+    array['video/webm', 'video/mp4', 'video/quicktime', 'video/x-m4v']
+)
+on conflict (id) do update
+set
+    public = excluded.public,
+    file_size_limit = excluded.file_size_limit,
+    allowed_mime_types = excluded.allowed_mime_types;

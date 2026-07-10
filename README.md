@@ -35,6 +35,30 @@ python3 falling_ball_ai_platform/run.py
 http://127.0.0.1:8877
 ```
 
+## 接入云数据库
+
+默认情况下，实验历史记录保存在本机 `data/measurements.sqlite3`，录像保存在 `data/videos/`。这些运行数据不会进入 GitHub。若要在不同电脑之间共享实验历史，请接入 Supabase：
+
+1. 新建 Supabase 项目，在 SQL Editor 中执行 `supabase_schema.sql`。
+2. 复制 `.env.example` 为 `.env`，填写：
+
+```bash
+SUPABASE_URL=https://your-project-ref.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
+SUPABASE_RUNS_TABLE=runs
+SUPABASE_VIDEO_BUCKET=falling-ball-videos
+SUPABASE_VIDEO_PREFIX=videos
+```
+
+3. 重启平台。访问 `/api/health`，若返回 `storage.backend` 为 `supabase`，说明实验记录已写入云数据库。
+4. 迁移本机已有历史记录：
+
+```bash
+.venv/bin/python tools/sync_local_data_to_supabase.py
+```
+
+如果不配置 `SUPABASE_VIDEO_BUCKET`，迁移脚本只迁移实验记录，并默认移除本机录像链接，避免换电脑后点到不存在的视频。配置 Storage bucket 后，脚本会把本机录像一起上传，历史回顾中的“载入录像”仍可使用。
+
 ## 后续真实实验要验证
 
 - 固定机位拍摄是否能稳定提取小球轨迹。

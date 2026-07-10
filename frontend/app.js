@@ -1419,8 +1419,12 @@ async function uploadRunVideo(runId, blob) {
 
 async function checkHealth() {
   try {
-    await api("/api/health");
-    if (el.serverStatus) el.serverStatus.textContent = "后端在线";
+    const data = await api("/api/health");
+    const storage = data.storage || {};
+    const storageLabel = storage.backend === "supabase"
+      ? `Supabase云库 · ${storage.video_backend === "supabase_storage" ? "云录像" : "本机录像"}`
+      : "本机SQLite";
+    if (el.serverStatus) el.serverStatus.textContent = `后端在线 · ${storageLabel}`;
     if (el.statusDot) el.statusDot.classList.add("online");
   } catch {
     if (el.serverStatus) el.serverStatus.textContent = "后端未连接";
