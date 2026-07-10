@@ -697,6 +697,7 @@ def analyze_frames(params: MeasurementParams, frames: list[dict], student: dict 
     tube_ratio = (2 * params.radius_mm) / params.tube_diameter_mm
     corrected = viscosity_from_terminal_velocity(params, vt)
     eta = corrected["viscosity"]
+    ideal_eta = corrected["ideal_viscosity"]
     re = corrected["re"]
     selected_v = [point["v"] for point in velocities[segment["start"] : segment["end"]]]
     uncertainty_a = (robust_sigma(selected_v) / math.sqrt(max(1, len(selected_v)))) if len(selected_v) > 1 else 0
@@ -719,7 +720,7 @@ def analyze_frames(params: MeasurementParams, frames: list[dict], student: dict 
     student_eta = to_optional_float(student_payload.get("student_eta"))
     has_student_result = student_v is not None and student_eta is not None
     v_error = abs(student_v - vt) / vt if has_student_result else None
-    eta_error = abs(student_eta - eta) / eta if has_student_result else None
+    eta_error = abs(student_eta - ideal_eta) / ideal_eta if has_student_result else None
     score = (
         max(48.0, min(98.0, 100 - eta_error * 260 - v_error * 160 - (1 - fit["r2"]) * 85))
         if has_student_result
@@ -754,6 +755,8 @@ def analyze_frames(params: MeasurementParams, frames: list[dict], student: dict 
             "student_eta": student_eta,
             "v_error": v_error,
             "eta_error": eta_error,
+            "eta_reference": ideal_eta if has_student_result else None,
+            "eta_reference_type": "ideal_stokes",
             "score": score,
         },
         "diagnostics": diagnostics,
@@ -826,7 +829,7 @@ def build_diagnostics(
     if eta_error is None or v_error is None:
         diagnostics.append({"level": "warn", "title": "未填写人工测量值", "message": "当前仅给出轨迹分析结果；填写人工测量值后再生成偏差诊断。"})
     elif eta_error < 0.05 and v_error < 0.05:
-        diagnostics.append({"level": "ok", "title": "学生结果接近AI参考", "message": f"质量评分 {score:.0f}，偏差处于较好范围。"})
+        diagnostics.append({"level": "ok", "title": "学生结果接近理想公式参考", "message": f"质量评分 {score:.0f}，人工 vt 与理想 Stokes 公式 η 偏差处于较好范围。"})
     elif eta_error < 0.12:
         diagnostics.append({"level": "warn", "title": "学生结果存在中等偏差", "message": "优先排查人工计时、匀速段选择和读数反应延迟。"})
     else:
@@ -981,7 +984,12 @@ def latest_measurement_text(latest: dict | None) -> str:
     if not latest:
         return "当前还没有导入真实轨迹或视频数据；完成一次测量后，我可以结合本次 vt、η、R² 和 Re 做针对性诊断。"
     result = latest["result"]
-    return f"最近一次测量：vt={result['terminal_velocity']:.4f} m/s，η={result['viscosity']:.3f} Pa·s，R²={result['r2']:.3f}，Re={result['re']:.3f}。"
+    ideal_eta = result.get("ideal_viscosity", result.get("viscosity"))
+    return (
+        f"最近一次测量：vt={result['terminal_velocity']:.4f} m/s，"
+        f"η_ideal={ideal_eta:.3f} Pa·s，η_corrected={result['viscosity']:.3f} Pa·s，"
+        f"R²={result['r2']:.3f}，Re={result['re']:.3f}。"
+    )
 
 
 def local_quiz_tutor_answer(context: dict | None) -> str | None:
@@ -1024,15 +1032,19 @@ def local_review_answer(context: dict | None) -> str | None:
     re = result.get("re")
     r2 = result.get("r2")
     confidence = result.get("tracking_confidence")
+    ideal_eta = result.get("ideal_viscosity")
+    corrected_eta = result.get("corrected_viscosity")
     eta_error = student.get("viscosity_error")
     if isinstance(r2, (int, float)):
         evidence.append(f"R²={r2:.3f}")
     if isinstance(re, (int, float)):
         evidence.append(f"Re={re:.3f}")
+    if isinstance(ideal_eta, (int, float)) and isinstance(corrected_eta, (int, float)):
+        evidence.append(f"η_ideal={ideal_eta:.4g} Pa·s，η_corrected={corrected_eta:.4g} Pa·s")
     if isinstance(confidence, (int, float)):
         evidence.append(f"追踪置信度约 {confidence * 100:.0f}%")
     if isinstance(eta_error, (int, float)):
-        evidence.append(f"人工粘度相对偏差约 {eta_error * 100:.1f}%")
+        evidence.append(f"人工粘度相对理想公式参考偏差约 {eta_error * 100:.1f}%")
     if quality.get("uniform_segment_cv") is not None:
         evidence.append(f"匀速段波动 CV={quality.get('uniform_segment_cv')}")
     if diagnostics:
@@ -1104,8 +1116,9 @@ def quiz_tutor_system_prompt(context: dict | None = None) -> str:
     if isinstance(context, dict) and context.get("kind") == "review":
         return (
             "你是落球法 AI 实验平台的实验记录复盘问答 agent。你要根据学生当前载入的实验记录，"
-            "回答关于实验数据、误差来源、可信度和改进建议的问题。必须结合上下文里的 vt、η、R²、Re、"
+            "回答关于实验数据、误差来源、可信度和改进建议的问题。必须结合上下文里的 vt、η_ideal、η_corrected、R²、Re、"
             "壁效应修正、匀速段稳定性、追踪置信度、人工测量偏差和诊断项。"
+            "学生人工粘滞系数按理想 Stokes 公式计算，评分只比较 η_ideal；η_corrected 只用于复盘壁效应和 Re 修正。"
             "回答格式要短而专业：先给一句结论，再列主要证据，最后给2到3条可执行改进建议。"
             "不要泛泛讲落球法；若没有载入记录，先要求学生载入记录，再给通用复盘方向。"
             "只回答落球法、AI视觉测量、虚拟仿真、实验讲义、试题解析和误差分析相关问题。"
@@ -1118,9 +1131,24 @@ def quiz_tutor_system_prompt(context: dict | None = None) -> str:
 
 
 def answer_question_online(question: str, latest: dict | None, context: dict | None = None) -> dict | None:
-    api_key = os.environ.get("ARK_API_KEY", "f8591ebf-5301-4922-ae6f-c1eb942643e5")
-    base_url = os.environ.get("ARK_BASE_URL", "https://ark.cn-beijing.volces.com/api/coding/v3")
-    model = os.environ.get("ARK_MODEL", "ark-code-latest")
+    api_key = (
+        os.environ.get("ARK_API_KEY")
+        or os.environ.get("VOLCENGINE_API_KEY")
+        or os.environ.get("VOLCENGINE_ARK_API_KEY")
+        or "f8591ebf-5301-4922-ae6f-c1eb942643e5"
+    )
+    configured_base = os.environ.get("ARK_BASE_URL") or os.environ.get("VOLCENGINE_ARK_BASE_URL")
+    candidate_base_urls = [configured_base] if configured_base else [
+        "https://ark.cn-beijing.volces.com/api/v3",
+        "https://ark.cn-beijing.volces.com/api/coding/v3",
+    ]
+    model = (
+        os.environ.get("ARK_MODEL")
+        or os.environ.get("ARK_ENDPOINT_ID")
+        or os.environ.get("VOLCENGINE_ARK_MODEL")
+        or os.environ.get("VOLCENGINE_ARK_ENDPOINT_ID")
+        or "ark-code-latest"
+    )
     measurement_context = latest_measurement_text(latest) if wants_run_context(question) else "学生当前在预习或答疑阶段，未必需要结合本次测量数据。"
     tutor_context = json.dumps(context, ensure_ascii=False, indent=2) if isinstance(context, dict) else "无单题上下文。"
     body = {
@@ -1136,24 +1164,25 @@ def answer_question_online(question: str, latest: dict | None, context: dict | N
             },
         ],
     }
-    request = urllib.request.Request(
-        f"{base_url}/chat/completions",
-        data=json.dumps(body).encode("utf-8"),
-        headers={
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json",
-        },
-        method="POST",
-    )
-    try:
-        with urllib.request.urlopen(request, timeout=30) as response:
-            payload = json.loads(response.read().decode("utf-8"))
-    except (urllib.error.URLError, TimeoutError, json.JSONDecodeError):
-        return None
-    answer = extract_chat_completion_text(payload)
-    if not answer:
-        return None
-    return {"answer": answer, "mode": "online", "sources": []}
+    for base_url in (url for url in candidate_base_urls if url):
+        request = urllib.request.Request(
+            f"{base_url.rstrip('/')}/chat/completions",
+            data=json.dumps(body).encode("utf-8"),
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            },
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=30) as response:
+                payload = json.loads(response.read().decode("utf-8"))
+        except (urllib.error.URLError, TimeoutError, json.JSONDecodeError):
+            continue
+        answer = extract_chat_completion_text(payload)
+        if answer:
+            return {"answer": answer, "mode": "online", "provider": "volcengine_ark", "sources": []}
+    return None
 
 
 def answer_question(question: str, latest: dict | None, context: dict | None = None) -> dict:

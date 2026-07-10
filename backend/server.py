@@ -243,14 +243,15 @@ class PlatformHandler(BaseHTTPRequestHandler):
         params = build_params(run.get("params") or {})
         terminal_velocity = float(result.get("terminal_velocity") or 0)
         viscosity = float(result.get("viscosity") or 0)
+        ideal_viscosity = float(result.get("ideal_viscosity") or viscosity or 0)
         r2 = float(result.get("r2") or 0)
         re = float(result.get("re") or 0)
-        if terminal_velocity <= 0 or viscosity <= 0:
+        if terminal_velocity <= 0 or ideal_viscosity <= 0:
             self.send_json({"error": "当前记录缺少AI参考结果，无法评分。"}, status=400)
             return
 
         v_error = abs(student_v - terminal_velocity) / terminal_velocity
-        eta_error = abs(student_eta - viscosity) / viscosity
+        eta_error = abs(student_eta - ideal_viscosity) / ideal_viscosity
         score = max(48.0, min(98.0, 100 - eta_error * 260 - v_error * 160 - (1 - r2) * 85))
         tube_ratio = (2 * params.radius_mm) / params.tube_diameter_mm
         run["student"] = {
@@ -258,6 +259,8 @@ class PlatformHandler(BaseHTTPRequestHandler):
             "student_eta": student_eta,
             "v_error": v_error,
             "eta_error": eta_error,
+            "eta_reference": ideal_viscosity,
+            "eta_reference_type": "ideal_stokes",
             "score": score,
         }
         run["diagnostics"] = build_diagnostics(params, r2, re, tube_ratio, score, v_error, eta_error, run.get("quality") or {})

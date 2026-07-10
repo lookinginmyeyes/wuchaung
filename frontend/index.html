@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>落球法测液体粘滞系数实验 AI 学习平台</title>
     <link rel="icon" href="./assets/generated/icons/calibration.png" />
-    <link rel="stylesheet" href="./styles.css?v=manual-before-ai-v119" />
+    <link rel="stylesheet" href="./styles.css?v=report-preview-layout-v121" />
   </head>
   <body>
     <div class="app-shell">
@@ -53,6 +53,10 @@
                   <strong><span>阅读讲义&nbsp;&nbsp;完成试题</span><span>通过测试&nbsp;&nbsp;方可实验</span></strong>
                   <p>讲义阅读完成后进入准入测试。测试通过后，系统将开放 AI 实验测量、虚拟仿真和实验记录分析功能。</p>
                 </div>
+                <button id="directHallBtn" class="ghost-button temporary-hall-button" type="button">
+                  <img class="button-art" src="./assets/generated/buttons/run-analysis.png" alt="" />
+                  <span>临时直达实验大厅</span>
+                </button>
               </section>
               <section class="gate-visual release-stage" id="gateVisualPanel" aria-label="下拉小球开始实验">
                 <img class="release-apparatus" src="./assets/generated/gate-release-apparatus-noball.png" alt="落球法实验释放装置" />
@@ -1040,7 +1044,7 @@
                     <tr>
                       <th>指标</th>
                       <th>人工值</th>
-                      <th>AI参考值</th>
+                      <th>AI理想参考值</th>
                       <th>相对偏差</th>
                     </tr>
                   </thead>
@@ -1050,8 +1054,8 @@
             </div>
             <div id="reportPreviewPanel" class="report-preview-panel" hidden>
               <div class="report-preview-head">
-                <span>网页报告</span>
-                <strong>与导出报告一致</strong>
+                <span>平台报告预览</span>
+                <strong>评分与误差复盘</strong>
               </div>
               <div id="reportPreview" class="report-preview"></div>
             </div>
@@ -1367,6 +1371,6 @@
     </div>
 
     <div id="toast" class="toast"></div>
-    <script src="./app.js?v=manual-before-ai-v119"></script>
+    <script src="./app.js?v=report-preview-layout-v121"></script>
   </body>
 </html>

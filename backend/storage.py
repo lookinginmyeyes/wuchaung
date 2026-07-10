@@ -466,10 +466,11 @@ def build_report_text(run: dict) -> str:
     score = student.get("score")
     v_error = student.get("v_error")
     eta_error = student.get("eta_error")
+    ideal_viscosity = result.get("ideal_viscosity", result["viscosity"])
     report_time = run.get("created_at") or datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     score_basis = [
         ("人工终端速度相对偏差", format_percent(v_error), "偏差越小，说明人工计时或人工选段越接近 AI 拟合结果。"),
-        ("人工粘滞系数相对偏差", format_percent(eta_error), "偏差越小，说明人工计算链路与修正后参考结果越一致。"),
+        ("人工粘滞系数相对偏差", format_percent(eta_error), "偏差越小，说明人工理想公式计算结果与 AI 理想公式参考值越一致。"),
         ("AI 拟合 R²", f"{float(result['r2']):.4f}", "越接近 1，匀速段线性越好。"),
         ("综合评分", format_report_value(score, "分", 0), "由人工偏差与 AI 拟合质量共同决定。"),
     ]
@@ -491,11 +492,11 @@ def build_report_text(run: dict) -> str:
         f"| 数据来源 | {run.get('source', '-')} |",
         "",
         "## 2. 数据对比表",
-        "| 指标 | 人工测量值 | AI参考值 | 相对偏差 | 备注 |",
+        "| 指标 | 人工测量值 | AI理想参考值 | 相对偏差 | 备注 |",
         "|---|---:|---:|---:|---|",
         report_compare_row("终端速度 vt", student.get("student_v"), result["terminal_velocity"], "m/s", student.get("v_error")),
-        report_compare_row("粘滞系数 η", student.get("student_eta"), result["viscosity"], "Pa·s", student.get("eta_error")),
-        f"| 理想公式粘滞系数 η_ideal | - | {format_report_value(result.get('ideal_viscosity', result['viscosity']), 'Pa·s', 6)} | - | 未计入全部修正时的参考值 |",
+        report_compare_row("理想公式粘滞系数 η₀", student.get("student_eta"), ideal_viscosity, "Pa·s", student.get("eta_error")),
+        f"| 修正后粘滞系数 η | - | {format_report_value(result['viscosity'], 'Pa·s', 6)} | - | 计入壁效应和 Re 修正后的复盘参考值，不用于学生理想公式评分 |",
         f"| 线性拟合 R² | - | {float(result['r2']):.4f} | - | 匀速段线性拟合质量 |",
         f"| Re | - | {float(result['re']):.4f} | - | Stokes 适用条件判据 |",
         f"| 壁效应修正因子 K壁 | - | {float(result['wall_correction']):.4f} | - | 由小球半径、量筒内径和液体深度决定 |",
@@ -511,7 +512,7 @@ def build_report_text(run: dict) -> str:
         "## 4. 误差分析",
         "| 类型 | 指标或现象 | 分析 |",
         "|---|---|---|",
-        f"| 人工测量误差 | vt 偏差 {format_percent(v_error)}；η 偏差 {format_percent(eta_error)} | 若偏差较大，优先检查人工计时、人工选段、读数反应延迟和计算单位。 |",
+        f"| 人工测量误差 | vt 偏差 {format_percent(v_error)}；η₀ 偏差 {format_percent(eta_error)} | 若偏差较大，优先检查人工计时、人工选段、读数反应延迟和理想公式单位换算。 |",
         f"| AI拟合误差 | R²={float(result['r2']):.4f}；匀速段速度离散度={float(quality.get('uniform_segment_cv', 0)):.4f} | R² 偏低或速度离散度偏大时，说明匀速段不稳定或轨迹噪声较大。 |",
         f"| 视觉追踪误差 | 平均置信度 {float(result['tracking_confidence']) * 100:.1f}%；降权坏点 {int(preprocessing.get('outlier_points', 0) or 0)}；无效点 {int(preprocessing.get('dropped_points', 0) or 0)} | 气泡、划痕、阴影、曝光过高或检测区域过大都可能造成误识别。 |",
         f"| 物理模型误差 | Re={float(result['re']):.4f}；K壁={float(result['wall_correction']):.4f} | Re 偏高或壁效应修正较大时，Stokes 条件偏离更明显。 |",

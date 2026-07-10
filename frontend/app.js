@@ -121,6 +121,7 @@ const el = {
   submitQuizBtn: document.getElementById("submitQuizBtn"),
   retryQuizBtn: document.getElementById("retryQuizBtn"),
   enterHallBtn: document.getElementById("enterHallBtn"),
+  directHallBtn: document.getElementById("directHallBtn"),
   resetAccessBtn: document.getElementById("resetAccessBtn"),
   serverStatus: document.getElementById("serverStatus"),
   statusDot: document.querySelector(".status-dot"),
@@ -3817,6 +3818,15 @@ function startQuiz() {
   showToast("已进入准入考试。");
 }
 
+function enterDashboardByTemporaryPass() {
+  state.accessGranted = true;
+  state.examStarted = false;
+  state.lectureStarted = false;
+  updateAccessState();
+  switchView("dashboard");
+  showToast("已通过临时入口进入实验大厅。");
+}
+
 function setupReleaseBall() {
   if (!el.releaseBallBtn) return;
   const maxPull = 148;
@@ -4377,9 +4387,9 @@ function renderStudentScoreTable(run) {
       error: formatPercent(student.v_error),
     },
     {
-      label: "粘滞系数 η",
+      label: "理想公式粘滞系数 η₀",
       student: formatMeasurement(student.student_eta, "Pa·s"),
-      ai: formatMeasurement(result.viscosity, "Pa·s"),
+      ai: formatMeasurement(idealViscosityFromRun(run), "Pa·s"),
       error: formatPercent(student.eta_error),
     },
   ];
@@ -5445,6 +5455,8 @@ function reviewAgentContext() {
       viscosity: student.student_eta,
       velocity_error: student.v_error,
       viscosity_error: student.eta_error,
+      viscosity_reference_basis: "ideal_stokes",
+      viscosity_reference: idealViscosityFromRun(run),
       score: student.score,
     },
     quality: {
@@ -5466,7 +5478,8 @@ function reviewAgentPrompt(question, context) {
   return [
     "你是落球法 AI 实验平台的实验记录复盘问答 agent。",
     "任务：根据学生当前载入的实验数据，回答关于实验数据、误差来源、结果可信度和改进建议的问题。",
-    "回答要求：必须结合上下文中的 vt、η、R²、Re、壁效应、匀速段稳定性、追踪置信度、人工测量偏差或诊断项；不要泛泛而谈。",
+    "回答要求：必须结合上下文中的 vt、η_ideal、η_corrected、R²、Re、壁效应、匀速段稳定性、追踪置信度、人工测量偏差或诊断项；不要泛泛而谈。",
+    "评分口径：学生人工粘滞系数按理想 Stokes 公式计算，因此评分偏差只和 η_ideal 比较；η_corrected 用于解释壁效应和 Re 修正带来的系统差异。",
     "输出结构：先给一句结论，再说明主要证据，最后给 2-3 条可执行改进建议。",
     "边界：如果没有载入记录，提醒学生先载入实验记录，再给通用建议。",
     `学生问题：${question}`,
@@ -5606,6 +5619,7 @@ function bind() {
   el.startQuizBtn.addEventListener("click", startQuiz);
   el.lectureReader.addEventListener("scroll", updateLectureProgress);
   setupReleaseBall();
+  el.directHallBtn?.addEventListener("click", enterDashboardByTemporaryPass);
   el.quizForm.addEventListener("submit", evaluateQuiz);
   el.quizForm.addEventListener("change", updateExamProgress);
   el.quizQuestionList.addEventListener("click", (event) => {
