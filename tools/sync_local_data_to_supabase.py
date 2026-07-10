@@ -67,29 +67,46 @@ def local_rows(db_path: Path, limit: int | None) -> list[sqlite3.Row]:
         conn.close()
 
 
-def maybe_archive_video(payload: dict, *, keep_local_video_links: bool, no_videos: bool) -> tuple[dict, str | None]:
+def maybe_archive_video(payload: dict, *, keep_local_video_links: bool, no_videos: bool) -> tuple[dict, str | None, dict | None]:
     video = payload.get("video") or {}
     filename = Path(str(video.get("filename", ""))).name
     if not filename:
-        return payload, None
+        return payload, None, None
     if no_videos:
         payload.pop("video", None)
-        return payload, "skipped video by --no-videos"
+        return payload, "skipped video by --no-videos", None
+    if storage.use_remote_video_server() and not storage.use_supabase_storage():
+        payload.pop("video", None)
+        return payload, "will upload video to remote video server after row insert", video
     if not storage.use_supabase_storage():
         if not keep_local_video_links:
             payload.pop("video", None)
-            return payload, "removed local-only video link; configure SUPABASE_VIDEO_BUCKET to migrate videos"
-        return payload, "kept local-only video link"
+            return payload, "removed local-only video link; configure SUPABASE_VIDEO_BUCKET or REMOTE_VIDEO_BASE_URL to migrate videos", None
+        return payload, "kept local-only video link", None
 
     source = storage.VIDEO_DIR / filename
     if not source.exists():
         payload.pop("video", None)
-        return payload, f"local video file missing: {source}"
+        return payload, f"local video file missing: {source}", None
     mime_type = video.get("mime_type") or mimetypes.guess_type(filename)[0] or "video/webm"
     data = source.read_bytes()
     storage.upload_supabase_video(filename, data, mime_type)
     payload["video"] = storage._video_payload(filename, mime_type, len(data), backend="supabase_storage")
-    return payload, f"uploaded video {filename}"
+    return payload, f"uploaded video {filename}", None
+
+
+def upload_remote_video_after_insert(remote_id: int, video: dict | None) -> str | None:
+    if not video:
+        return None
+    filename = Path(str(video.get("filename", ""))).name
+    if not filename:
+        return None
+    source = storage.VIDEO_DIR / filename
+    if not source.exists():
+        return f"remote video upload skipped; local file missing: {source}"
+    mime_type = video.get("mime_type") or mimetypes.guess_type(filename)[0] or "video/webm"
+    uploaded = storage.upload_remote_run_video(remote_id, source.read_bytes(), mime_type)
+    return f"uploaded video to remote server as {uploaded.get('filename', filename)}" if uploaded else "remote video upload failed"
 
 
 def migrate() -> None:
@@ -107,7 +124,7 @@ def migrate() -> None:
             skipped += 1
             continue
         payload = json.loads(row["payload"])
-        payload, video_note = maybe_archive_video(
+        payload, video_note, remote_video = maybe_archive_video(
             payload,
             keep_local_video_links=args.keep_local_video_links,
             no_videos=args.no_videos,
@@ -125,12 +142,16 @@ def migrate() -> None:
             "payload": payload,
             "source": row["source"],
         }
-        storage.supabase_request(
+        inserted_rows = storage.supabase_request(
             "POST",
             storage.SUPABASE_TABLE,
             [remote_row],
-            headers={"Prefer": "return=minimal"},
-        )
+            headers={"Prefer": "return=representation"},
+        ) or []
+        if remote_video and inserted_rows:
+            remote_note = upload_remote_video_after_insert(int(inserted_rows[0]["id"]), remote_video)
+            if remote_note:
+                video_notes.append(f"run #{row['id']}: {remote_note}")
         inserted += 1
 
     print(f"Supabase sync complete: inserted={inserted}, skipped_existing={skipped}, total_local={len(rows)}")
