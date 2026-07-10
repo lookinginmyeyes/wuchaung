@@ -31,7 +31,7 @@ const state = {
   records: [],
   selectedRecordIds: new Set(),
   chartMode: "position",
-  source: "trajectory",
+  source: "realtime",
   videoUrl: null,
   liveStream: null,
   liveRecorder: null,
@@ -235,14 +235,23 @@ const el = {
   outlierCount: document.getElementById("outlierCount"),
   segmentCv: document.getElementById("segmentCv"),
   trackingConfidence: document.getElementById("trackingConfidence"),
+  segmentSensitivity: document.getElementById("segmentSensitivity"),
+  accelerationSpanHint: document.getElementById("accelerationSpanHint"),
+  motionPhaseStatus: document.getElementById("motionPhaseStatus"),
+  motionAccelLength: document.getElementById("motionAccelLength"),
+  motionUniformLength: document.getElementById("motionUniformLength"),
+  motionDecelLength: document.getElementById("motionDecelLength"),
   uncertaintyStatus: document.getElementById("uncertaintyStatus"),
   uncertaintyDiameterMm: document.getElementById("uncertaintyDiameterMm"),
   uncertaintyTimeS: document.getElementById("uncertaintyTimeS"),
   uncertaintyDistanceMm: document.getElementById("uncertaintyDistanceMm"),
   uncertaintyTubeDiameterMm: document.getElementById("uncertaintyTubeDiameterMm"),
   uncertaintyLiquidDepthMm: document.getElementById("uncertaintyLiquidDepthMm"),
+  uncertaintyCalibrationMm: document.getElementById("uncertaintyCalibrationMm"),
+  uncertaintyFocusMm: document.getElementById("uncertaintyFocusMm"),
   uncertaintyDiameterTerm: document.getElementById("uncertaintyDiameterTerm"),
   uncertaintyTimingTerm: document.getElementById("uncertaintyTimingTerm"),
+  uncertaintyVisualTerm: document.getElementById("uncertaintyVisualTerm"),
   uncertaintyCombined: document.getElementById("uncertaintyCombined"),
   uncertaintyStandard: document.getElementById("uncertaintyStandard"),
   uncertaintyExpanded: document.getElementById("uncertaintyExpanded"),
@@ -253,6 +262,7 @@ const el = {
   downloadReport: document.getElementById("downloadReport"),
   dashboardBackBtn: document.getElementById("dashboardBackBtn"),
   recordsBody: document.getElementById("recordsBody"),
+  recordsSummary: document.getElementById("recordsSummary"),
   selectAllRecords: document.getElementById("selectAllRecords"),
   deleteSelectedRecordsBtn: document.getElementById("deleteSelectedRecordsBtn"),
   chatLog: document.getElementById("chatLog"),
@@ -269,6 +279,9 @@ const el = {
   moduleGrid: document.getElementById("moduleGrid"),
   simScenario: document.getElementById("simScenario"),
   simLiquidNote: document.getElementById("simLiquidNote"),
+  simTemperatureC: document.getElementById("simTemperatureC"),
+  simEtaReference: document.getElementById("simEtaReference"),
+  simRhoLiquid: document.getElementById("simRhoLiquid"),
   simRadiusMm: document.getElementById("simRadiusMm"),
   simTubeMm: document.getElementById("simTubeMm"),
   simDepthMm: document.getElementById("simDepthMm"),
@@ -362,17 +375,6 @@ const viewMeta = {
 };
 
 const dataSources = {
-  trajectory: {
-    status: "CSV可用",
-    name: "轨迹 CSV",
-    detail: "导入时间-位移轨迹，后端直接进行速度曲线、匀速段和粘滞系数分析。",
-    schemaTitle: "t, y 为必填列",
-    schemaDetail: "可选列：x、confidence、measured_y、corrected_y。单位默认 t/s、y/m。",
-    accept: ".csv,text/csv",
-    pickerLabel: "选择轨迹CSV",
-    actionLabel: "分析已选CSV",
-    enabled: true,
-  },
   video: {
     status: "OpenCV可追踪",
     name: "摄像机视频",
@@ -558,87 +560,143 @@ const unrelatedTopicKeywords = [
   "英语", "数学", "语文", "编程", "代码", "作业", "购物", "恋爱",
 ];
 
-const presets = {
-  "纯甘油 25℃": { rhoLiquid: 1261, etaReference: 0.945, temperatureC: 25 },
-  "500 cSt 硅油 25℃": { rhoLiquid: 970, etaReference: 0.485, temperatureC: 25 },
-  "纯甘油 20℃": { rhoLiquid: 1263, etaReference: 1.412, temperatureC: 20 },
-  "蓖麻油 25℃": { rhoLiquid: 961, etaReference: 0.65, temperatureC: 25 },
-};
-
 const standardViscosityReferences = [
   {
     label: "纯水",
     aliases: ["纯水", "水"],
-    refTempC: 20,
-    viscosityPaS: 0.0010016,
-    beta: 1850,
-    tolerance: 0.06,
-    source: "NIST/表值",
+    tolerance: 0.04,
+    source: "NIST/CRC水物性表",
+    table: [
+      { temperatureC: 0, viscosityPaS: 0.001792, densityKgM3: 999.84 },
+      { temperatureC: 5, viscosityPaS: 0.001519, densityKgM3: 999.97 },
+      { temperatureC: 10, viscosityPaS: 0.001307, densityKgM3: 999.7 },
+      { temperatureC: 15, viscosityPaS: 0.001139, densityKgM3: 999.1 },
+      { temperatureC: 20, viscosityPaS: 0.0010016, densityKgM3: 998.21 },
+      { temperatureC: 25, viscosityPaS: 0.000890, densityKgM3: 997.05 },
+      { temperatureC: 30, viscosityPaS: 0.000798, densityKgM3: 995.65 },
+      { temperatureC: 35, viscosityPaS: 0.000720, densityKgM3: 994.03 },
+      { temperatureC: 40, viscosityPaS: 0.000653, densityKgM3: 992.22 },
+      { temperatureC: 50, viscosityPaS: 0.000547, densityKgM3: 988.05 },
+    ],
   },
   {
     label: "无水乙醇",
     aliases: ["乙醇", "酒精"],
-    refTempC: 20,
-    viscosityPaS: 0.0012,
-    beta: 1500,
-    tolerance: 0.08,
-    source: "物性表值",
+    tolerance: 0.06,
+    source: "CRC/工程物性表",
+    table: [
+      { temperatureC: 0, viscosityPaS: 0.001773, densityKgM3: 806.0 },
+      { temperatureC: 10, viscosityPaS: 0.001466, densityKgM3: 797.9 },
+      { temperatureC: 20, viscosityPaS: 0.001200, densityKgM3: 789.3 },
+      { temperatureC: 25, viscosityPaS: 0.001074, densityKgM3: 785.0 },
+      { temperatureC: 30, viscosityPaS: 0.000983, densityKgM3: 780.8 },
+      { temperatureC: 40, viscosityPaS: 0.000834, densityKgM3: 772.3 },
+    ],
+  },
+  {
+    label: "甲醇",
+    aliases: ["甲醇", "methanol"],
+    tolerance: 0.07,
+    source: "CRC/工程物性表",
+    table: [
+      { temperatureC: 0, viscosityPaS: 0.000817, densityKgM3: 810.0 },
+      { temperatureC: 10, viscosityPaS: 0.000690, densityKgM3: 800.4 },
+      { temperatureC: 20, viscosityPaS: 0.000594, densityKgM3: 791.8 },
+      { temperatureC: 25, viscosityPaS: 0.000543, densityKgM3: 786.6 },
+      { temperatureC: 30, viscosityPaS: 0.000507, densityKgM3: 782.0 },
+      { temperatureC: 40, viscosityPaS: 0.000446, densityKgM3: 772.5 },
+    ],
   },
   {
     label: "乙二醇",
     aliases: ["乙二醇"],
-    refTempC: 20,
-    viscosityPaS: 0.0198,
-    beta: 3300,
     tolerance: 0.1,
-    source: "物性表值",
+    source: "CRC/工程物性表",
+    table: [
+      { temperatureC: 10, viscosityPaS: 0.0302, densityKgM3: 1120 },
+      { temperatureC: 20, viscosityPaS: 0.0198, densityKgM3: 1113 },
+      { temperatureC: 25, viscosityPaS: 0.0161, densityKgM3: 1110 },
+      { temperatureC: 30, viscosityPaS: 0.0135, densityKgM3: 1107 },
+      { temperatureC: 40, viscosityPaS: 0.0089, densityKgM3: 1100 },
+      { temperatureC: 50, viscosityPaS: 0.0062, densityKgM3: 1093 },
+    ],
   },
   {
     label: "丙二醇",
     aliases: ["丙二醇"],
-    refTempC: 25,
-    viscosityPaS: 0.0486,
-    beta: 4100,
     tolerance: 0.12,
-    source: "物性表值",
+    source: "厂家/工程物性表",
+    table: [
+      { temperatureC: 10, viscosityPaS: 0.0850, densityKgM3: 1045 },
+      { temperatureC: 20, viscosityPaS: 0.0581, densityKgM3: 1038 },
+      { temperatureC: 25, viscosityPaS: 0.0486, densityKgM3: 1036 },
+      { temperatureC: 30, viscosityPaS: 0.0404, densityKgM3: 1032 },
+      { temperatureC: 40, viscosityPaS: 0.0266, densityKgM3: 1023 },
+      { temperatureC: 50, viscosityPaS: 0.0180, densityKgM3: 1015 },
+    ],
   },
   {
     label: "500 cSt 硅油",
     aliases: ["500 cst", "500cst", "硅油"],
-    refTempC: 25,
-    viscosityPaS: 0.485,
-    beta: 2600,
-    tolerance: 0.12,
-    source: "运动粘度换算",
+    tolerance: 0.16,
+    source: "500 cSt牌号换算",
+    table: [
+      { temperatureC: 20, viscosityPaS: 0.570, densityKgM3: 972 },
+      { temperatureC: 25, viscosityPaS: 0.485, densityKgM3: 970 },
+      { temperatureC: 30, viscosityPaS: 0.414, densityKgM3: 967 },
+      { temperatureC: 40, viscosityPaS: 0.305, densityKgM3: 962 },
+      { temperatureC: 50, viscosityPaS: 0.232, densityKgM3: 957 },
+    ],
   },
   {
     label: "蓖麻油",
     aliases: ["蓖麻油"],
-    refTempC: 25,
-    viscosityPaS: 0.82,
-    beta: 5200,
-    tolerance: 0.38,
+    tolerance: 0.35,
     source: "天然油表值",
+    table: [
+      { temperatureC: 20, viscosityPaS: 0.986, densityKgM3: 961 },
+      { temperatureC: 25, viscosityPaS: 0.650, densityKgM3: 957 },
+      { temperatureC: 30, viscosityPaS: 0.451, densityKgM3: 954 },
+      { temperatureC: 35, viscosityPaS: 0.325, densityKgM3: 950 },
+      { temperatureC: 40, viscosityPaS: 0.242, densityKgM3: 946 },
+      { temperatureC: 50, viscosityPaS: 0.128, densityKgM3: 938 },
+    ],
   },
   {
     label: "纯甘油",
     aliases: ["纯甘油", "甘油", "glycerol"],
-    refTempC: 25,
-    viscosityPaS: 0.945,
-    beta: 6200,
     tolerance: 0.09,
     source: "甘油表值",
+    table: [
+      { temperatureC: 0, viscosityPaS: 12.100, densityKgM3: 1272 },
+      { temperatureC: 10, viscosityPaS: 3.950, densityKgM3: 1268 },
+      { temperatureC: 15, viscosityPaS: 2.330, densityKgM3: 1265 },
+      { temperatureC: 20, viscosityPaS: 1.412, densityKgM3: 1263 },
+      { temperatureC: 25, viscosityPaS: 0.945, densityKgM3: 1261 },
+      { temperatureC: 30, viscosityPaS: 0.612, densityKgM3: 1258 },
+      { temperatureC: 35, viscosityPaS: 0.412, densityKgM3: 1256 },
+      { temperatureC: 40, viscosityPaS: 0.284, densityKgM3: 1253 },
+      { temperatureC: 45, viscosityPaS: 0.201, densityKgM3: 1250 },
+      { temperatureC: 50, viscosityPaS: 0.141, densityKgM3: 1248 },
+    ],
   },
   {
     label: "食用植物油",
     aliases: ["食用植物油", "植物油", "食用油"],
-    refTempC: 25,
-    viscosityPaS: 0.065,
-    beta: 4300,
     tolerance: 0.35,
     source: "品类范围",
+    table: [
+      { temperatureC: 20, viscosityPaS: 0.078, densityKgM3: 920 },
+      { temperatureC: 25, viscosityPaS: 0.065, densityKgM3: 918 },
+      { temperatureC: 30, viscosityPaS: 0.053, densityKgM3: 915 },
+      { temperatureC: 40, viscosityPaS: 0.035, densityKgM3: 910 },
+    ],
   },
 ];
+
+const presets = Object.fromEntries(
+  standardViscosityReferences.map((reference) => [reference.label, { liquid: reference.label }])
+);
 
 const blindLiquidCandidates = [
   {
@@ -753,8 +811,7 @@ const blindLiquidCandidates = [
 
 // Standard table values at the listed temperature. Viscosity is strongly temperature-dependent.
 const simulationPresets = {
-  standard: {
-    note: "ρ=1261 kg/m³，η=0.945 Pa·s，纯甘油 25℃表值。",
+  "纯甘油": {
     radius: 1.5,
     tube: 35,
     depth: 220,
@@ -762,17 +819,7 @@ const simulationPresets = {
     damping: 0,
     stability: 1,
   },
-  wall: {
-    note: "ρ=1263 kg/m³，η=1.412 Pa·s，纯甘油 20℃表值。",
-    radius: 1.5,
-    tube: 35,
-    depth: 220,
-    release: 0,
-    damping: 0,
-    stability: 1,
-  },
-  glare: {
-    note: "ρ=970 kg/m³，η=0.485 Pa·s，由 500 cSt 硅油和 25℃密度换算。",
+  "500 cSt 硅油": {
     radius: 1.5,
     tube: 35,
     depth: 210,
@@ -780,8 +827,7 @@ const simulationPresets = {
     damping: 0,
     stability: 1,
   },
-  propylene_glycol_25: {
-    note: "ρ=1036 kg/m³，η=0.0486 Pa·s，丙二醇 25℃表值。",
+  "蓖麻油": {
     radius: 1.5,
     tube: 35,
     depth: 220,
@@ -789,8 +835,7 @@ const simulationPresets = {
     damping: 0,
     stability: 1,
   },
-  ethylene_glycol_20: {
-    note: "ρ=1113 kg/m³，η=0.0198 Pa·s，乙二醇 20℃表值。",
+  "乙二醇": {
     radius: 1.2,
     tube: 45,
     depth: 240,
@@ -798,8 +843,15 @@ const simulationPresets = {
     damping: 0,
     stability: 1,
   },
-  ethanol_20: {
-    note: "ρ=789 kg/m³，η=0.00120 Pa·s，无水乙醇 20℃表值；低粘度会明显提高 Re。",
+  "丙二醇": {
+    radius: 1.5,
+    tube: 35,
+    depth: 220,
+    release: 0,
+    damping: 0,
+    stability: 1,
+  },
+  "纯水": {
     radius: 0.8,
     tube: 60,
     depth: 260,
@@ -807,8 +859,7 @@ const simulationPresets = {
     damping: 0,
     stability: 1,
   },
-  methanol_25: {
-    note: "ρ=787 kg/m³，η=0.000543 Pa·s，甲醇 25℃表值；低粘度主要用于超限对比。",
+  "无水乙醇": {
     radius: 0.8,
     tube: 60,
     depth: 260,
@@ -816,8 +867,7 @@ const simulationPresets = {
     damping: 0,
     stability: 1,
   },
-  water_20: {
-    note: "ρ=998.2 kg/m³，η=0.0010016 Pa·s，纯水 20℃表值；通常会偏离低 Re 条件。",
+  "甲醇": {
     radius: 0.8,
     tube: 60,
     depth: 260,
@@ -1148,18 +1198,27 @@ function idealViscosityFromRun(run) {
   return (2 * radiusM * radiusM * (rhoBall - rhoLiquid) * 9.80665) / (9 * terminalVelocity);
 }
 
-function estimateReferenceViscosityAtTemperature(reference, temperatureC) {
-  const refTempK = reference.refTempC + 273.15;
-  const sampleTempK = temperatureC + 273.15;
-  return reference.viscosityPaS * Math.exp(reference.beta * ((1 / sampleTempK) - (1 / refTempK)));
-}
-
 function findStandardViscosityReference(liquidName) {
   const normalized = String(liquidName || "").trim().toLowerCase();
   if (!normalized) return null;
   return standardViscosityReferences.find((reference) =>
     reference.aliases.some((alias) => normalized.includes(alias.toLowerCase()))
   ) || null;
+}
+
+function canonicalLiquidName(liquidName) {
+  return findStandardViscosityReference(liquidName)?.label || String(liquidName || "").trim();
+}
+
+function nearestStandardViscosityPoint(reference, temperatureC) {
+  const table = Array.isArray(reference?.table) ? reference.table : [];
+  if (!table.length) return null;
+  return table.reduce((best, point) => {
+    if (!best) return point;
+    const currentDistance = Math.abs(Number(point.temperatureC) - temperatureC);
+    const bestDistance = Math.abs(Number(best.temperatureC) - temperatureC);
+    return currentDistance < bestDistance ? point : best;
+  }, null);
 }
 
 function standardViscosityIntervalFromRun(run) {
@@ -1169,18 +1228,35 @@ function standardViscosityIntervalFromRun(run) {
   if (!reference) return null;
   const temperature = finiteNumber(params.temperature_c)
     ?? finiteNumber(el.temperatureC?.value)
-    ?? reference.refTempC;
-  const center = estimateReferenceViscosityAtTemperature(reference, temperature);
+    ?? null;
+  if (temperature === null) return { label: reference.label, missingTemperature: true };
+  const matched = nearestStandardViscosityPoint(reference, temperature);
+  if (!matched) return null;
+  const center = finiteNumber(matched.viscosityPaS);
   if (!Number.isFinite(center) || center <= 0) return null;
   const lower = center * (1 - reference.tolerance);
   const upper = center * (1 + reference.tolerance);
   return {
     label: reference.label,
-    temperature,
+    inputTemperature: temperature,
+    matchedTemperature: Number(matched.temperatureC),
+    center,
+    densityKgM3: finiteNumber(matched.densityKgM3),
     lower,
     upper,
     source: reference.source,
   };
+}
+
+function standardViscosityNoteText(interval) {
+  if (!interval || interval.missingTemperature) return "请先填写温度，系统会匹配最近表值";
+  const input = interval.inputTemperature;
+  const matched = interval.matchedTemperature;
+  const exact = Math.abs(input - matched) < 0.05;
+  const temperatureText = exact
+    ? `${matched.toFixed(1)}℃表值`
+    : `输入 ${input.toFixed(1)}℃，匹配 ${matched.toFixed(1)}℃表值`;
+  return `${interval.label} · ${temperatureText} · ${interval.source}`;
 }
 
 function renderStandardViscosityRange(run, status = "normal") {
@@ -1201,8 +1277,13 @@ function renderStandardViscosityRange(run, status = "normal") {
     el.standardViscosityNote.textContent = "未匹配到样本表值";
     return;
   }
+  if (interval.missingTemperature) {
+    el.standardViscosityRange.textContent = "待填写温度";
+    el.standardViscosityNote.textContent = standardViscosityNoteText(interval);
+    return;
+  }
   el.standardViscosityRange.textContent = formatViscosityRange(interval.lower, interval.upper);
-  el.standardViscosityNote.textContent = `${interval.label} ${interval.temperature.toFixed(1)}℃ · ${interval.source}`;
+  el.standardViscosityNote.textContent = standardViscosityNoteText(interval);
 }
 
 function estimateUniformSegmentSpan(run, terminalVelocity) {
@@ -1229,6 +1310,139 @@ function estimateUniformSegmentSpan(run, terminalVelocity) {
   }
   if (!Number.isFinite(distanceM) || distanceM <= 0) return null;
   return { timeS, distanceM };
+}
+
+function clampIndex(value, min, max) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return min;
+  return Math.max(min, Math.min(max, Math.round(parsed)));
+}
+
+function interpolatePositionAtTime(positionCurve, targetTime) {
+  if (!Array.isArray(positionCurve) || !positionCurve.length || !Number.isFinite(targetTime)) return null;
+  const points = positionCurve
+    .map((point) => ({ t: finiteNumber(point.t), y: finiteNumber(point.y) }))
+    .filter((point) => point.t !== null && point.y !== null)
+    .sort((a, b) => a.t - b.t);
+  if (!points.length) return null;
+  if (targetTime <= points[0].t) return points[0].y;
+  const last = points[points.length - 1];
+  if (targetTime >= last.t) return last.y;
+  for (let index = 1; index < points.length; index += 1) {
+    const previous = points[index - 1];
+    const current = points[index];
+    if (targetTime <= current.t) {
+      const ratio = (targetTime - previous.t) / Math.max(1e-9, current.t - previous.t);
+      return previous.y + (current.y - previous.y) * ratio;
+    }
+  }
+  return last.y;
+}
+
+function estimateMotionPhases(run) {
+  const velocityCurve = Array.isArray(run?.curves?.velocity) ? run.curves.velocity : [];
+  const positionCurve = Array.isArray(run?.curves?.position) ? run.curves.position : [];
+  const segment = run?.segment || {};
+  if (velocityCurve.length < 4 || !positionCurve.length || segment.start === undefined || segment.end === undefined) return null;
+  const maxVelocityIndex = velocityCurve.length - 1;
+  const uniformStartIndex = clampIndex(segment.start, 0, maxVelocityIndex);
+  const uniformEndIndex = clampIndex(segment.end, uniformStartIndex, maxVelocityIndex);
+  const firstTime = finiteNumber(positionCurve[0]?.t) ?? 0;
+  const finalTime = finiteNumber(positionCurve[positionCurve.length - 1]?.t)
+    ?? finiteNumber(velocityCurve[maxVelocityIndex]?.t)
+    ?? 0;
+  const uniformStartTime = finiteNumber(velocityCurve[uniformStartIndex]?.t) ?? firstTime;
+  const uniformEndTime = finiteNumber(velocityCurve[uniformEndIndex]?.t) ?? finalTime;
+  const phaseSpecs = [
+    { key: "acceleration", label: "加速段", startTime: firstTime, endTime: Math.max(firstTime, uniformStartTime) },
+    { key: "uniform", label: "匀速段", startTime: Math.max(firstTime, uniformStartTime), endTime: Math.max(uniformStartTime, uniformEndTime) },
+    { key: "deceleration", label: "减速段", startTime: Math.max(uniformEndTime, firstTime), endTime: Math.max(finalTime, uniformEndTime) },
+  ];
+  const phases = phaseSpecs.map((phase) => {
+    const startY = interpolatePositionAtTime(positionCurve, phase.startTime);
+    const endY = interpolatePositionAtTime(positionCurve, phase.endTime);
+    const timeS = Math.max(0, phase.endTime - phase.startTime);
+    const distanceM = startY === null || endY === null ? null : Math.abs(endY - startY);
+    return { ...phase, timeS, distanceM };
+  });
+  const totalDistanceM = phases.reduce((sum, phase) => sum + (finiteNumber(phase.distanceM) || 0), 0);
+  return {
+    phases,
+    acceleration: phases[0],
+    uniform: phases[1],
+    deceleration: phases[2],
+    totalDistanceM,
+  };
+}
+
+function formatPhaseLength(phase) {
+  const distanceM = finiteNumber(phase?.distanceM);
+  if (distanceM === null) return "--";
+  if (distanceM <= 0.00005) return "<0.1 mm";
+  const distanceMm = distanceM * 1000;
+  if (distanceMm >= 100) return `${(distanceMm / 10).toFixed(1)} cm`;
+  return `${distanceMm.toFixed(1)} mm`;
+}
+
+function renderMotionPhaseCard(run, mode = "normal") {
+  if (!el.motionPhaseStatus) return;
+  if (!run || mode === "empty") {
+    el.motionPhaseStatus.textContent = "等待完整轨迹";
+    el.motionAccelLength.textContent = "--";
+    el.motionUniformLength.textContent = "--";
+    el.motionDecelLength.textContent = "--";
+    return;
+  }
+  if (mode === "locked" || shouldLockRunResults(run)) {
+    el.motionPhaseStatus.textContent = "待人工测量后显示";
+    el.motionAccelLength.textContent = "--";
+    el.motionUniformLength.textContent = "--";
+    el.motionDecelLength.textContent = "--";
+    return;
+  }
+  const summary = estimateMotionPhases(run);
+  if (!summary) {
+    el.motionPhaseStatus.textContent = "等待自动判段";
+    el.motionAccelLength.textContent = "--";
+    el.motionUniformLength.textContent = "--";
+    el.motionDecelLength.textContent = "--";
+    return;
+  }
+  el.motionPhaseStatus.textContent = "已完成自动判段";
+  el.motionAccelLength.textContent = formatPhaseLength(summary.acceleration);
+  el.motionUniformLength.textContent = formatPhaseLength(summary.uniform);
+  el.motionDecelLength.textContent = formatPhaseLength(summary.deceleration);
+}
+
+function estimateSegmentSensitivity(run, terminalVelocity) {
+  const parsedVt = finiteNumber(terminalVelocity ?? run?.result?.terminal_velocity);
+  const velocityCurve = Array.isArray(run?.curves?.velocity) ? run.curves.velocity : [];
+  if (parsedVt === null || parsedVt <= 0 || velocityCurve.length < 9) return null;
+  const segment = run?.segment || {};
+  const start = Math.max(0, Math.min(Number(segment.start) || 0, velocityCurve.length - 1));
+  const end = Math.max(start + 1, Math.min(Number(segment.end) || velocityCurve.length - 1, velocityCurve.length - 1));
+  const values = velocityCurve
+    .slice(start, end + 1)
+    .map((point) => finiteNumber(point.v))
+    .filter((value) => value !== null && value > 0);
+  if (values.length < 9) return null;
+  const chunkSize = Math.max(3, Math.floor(values.length / 3));
+  const means = [];
+  for (let index = 0; index < 3; index += 1) {
+    const chunk = values.slice(index * chunkSize, index === 2 ? values.length : (index + 1) * chunkSize);
+    if (chunk.length >= 3) means.push(chunk.reduce((sum, value) => sum + value, 0) / chunk.length);
+  }
+  if (means.length < 2) return null;
+  return {
+    relative: (Math.max(...means) - Math.min(...means)) / parsedVt,
+    min: Math.min(...means),
+    max: Math.max(...means),
+  };
+}
+
+function formatSegmentSensitivity(run, terminalVelocity) {
+  const sensitivity = estimateSegmentSensitivity(run, terminalVelocity);
+  return sensitivity ? formatPercent(sensitivity.relative) : "--";
 }
 
 function formatUniformSegmentLength(span) {
@@ -1258,8 +1472,9 @@ function ensureLiquidOption(value) {
 
 function fillExperimentInputsFromRun(run) {
   const params = run?.params || {};
-  ensureLiquidOption(params.liquid);
-  if (el.liquid) el.liquid.value = params.liquid || "";
+  const displayLiquid = canonicalLiquidName(params.liquid);
+  ensureLiquidOption(displayLiquid);
+  if (el.liquid) el.liquid.value = displayLiquid || "";
   setInputValue(el.temperatureC, params.temperature_c);
   setInputValue(el.rhoLiquid, params.rho_liquid);
   setInputValue(el.etaReference, params.eta_reference);
@@ -1536,8 +1751,8 @@ function setButtonLoading(button, loading, label) {
 }
 
 function setDataSource(sourceKey) {
-  const source = dataSources[sourceKey] || dataSources.trajectory;
-  state.source = dataSources[sourceKey] ? sourceKey : "trajectory";
+  const source = dataSources[sourceKey] || dataSources.realtime;
+  state.source = dataSources[sourceKey] ? sourceKey : "realtime";
   document.body.dataset.source = state.source;
   el.sourceStatus.textContent = source.status;
   el.activeSourceName.textContent = source.name;
@@ -1564,13 +1779,11 @@ function setDataSource(sourceKey) {
   } else if (state.source === "realtime") {
     updateLiveCalibrationStatus();
     updateFileQueue("等待画面", "待连接", "连接摄像头后先标定，再开始追踪。");
-  } else if (state.source === "trajectory") {
-    updateFileQueue("等待真实轨迹文件", "待选择", "选择 CSV 后会显示待分析文件和处理状态。");
   }
   const pickerText = document.querySelector(".file-picker span");
   if (pickerText) pickerText.textContent = source.pickerLabel;
   document.querySelectorAll("[data-source]").forEach((button) => {
-    button.classList.toggle("active", button.dataset.source === sourceKey);
+    button.classList.toggle("active", button.dataset.source === state.source);
   });
 }
 
@@ -3299,6 +3512,8 @@ function renderLiveTrackingPreview() {
   el.trackingConfidence.textContent = state.liveTrajectory.length
     ? `${Math.round((state.liveTrajectory.reduce((sum, point) => sum + point.confidence, 0) / state.liveTrajectory.length) * 100)}%`
     : "--";
+  if (el.segmentSensitivity) el.segmentSensitivity.textContent = "--";
+  renderMotionPhaseCard(run, "empty");
   el.score.textContent = "--";
   if (el.scoreReportBtn) el.scoreReportBtn.disabled = true;
   el.runBadge.textContent = `实时追踪 ${state.liveTrajectory.length} 点`;
@@ -3672,22 +3887,52 @@ function renderEmptyState() {
   el.outlierCount.textContent = "--";
   el.segmentCv.textContent = "--";
   el.trackingConfidence.textContent = "--";
+  if (el.segmentSensitivity) el.segmentSensitivity.textContent = "--";
   el.score.textContent = "--";
   if (el.scoreReportBtn) el.scoreReportBtn.disabled = true;
   el.runBadge.textContent = "等待数据";
   el.downloadReport.href = "#";
   el.downloadReport.classList.add("disabled");
+  clearReportPreview();
+  renderStudentScoreTable(null);
+  renderMotionPhaseCard(null, "empty");
   el.diagnostics.innerHTML = `
     <article class="diagnostic empty">
       <img src="${assetMap.diagnostic.ok}" alt="" />
       <div>
-        <strong>尚未导入真实轨迹</strong>
-        <p>导入 CSV 后，这里会显示匀速段、Re 条件、壁效应和偏差来源诊断。</p>
+        <strong>尚未完成视觉追踪</strong>
+        <p>连接实时画面或载入实验视频后，这里会显示匀速段、Re 条件、壁效应和偏差来源诊断。</p>
       </div>
     </article>
   `;
-  renderUncertainty();
+  renderUncertainty(null);
   drawChart();
+}
+
+function resetWorkspaceSession({ keepInputs = false } = {}) {
+  state.latest = null;
+  state.chartMode = "position";
+  state.liveTrajectory = [];
+  state.liveMisses = 0;
+  state.liveBackendFailures = 0;
+  state.liveOffsetTerminated = false;
+  state.lastFallOffset = null;
+  if (state.liveChartDrawTimer) {
+    window.clearTimeout(state.liveChartDrawTimer);
+    state.liveChartDrawTimer = null;
+  }
+  if (!keepInputs) {
+    clearExperimentInputs();
+    if (el.studentV) el.studentV.value = "";
+    if (el.studentEta) el.studentEta.value = "";
+  }
+  resetVideoPreview();
+  resetFallOffsetStatus();
+  if (el.liveReadinessLabel) el.liveReadinessLabel.textContent = "实时待连接";
+  if (el.liveReadinessDetail) el.liveReadinessDetail.textContent = "连接摄像头后完成标定，再开始实时追踪。";
+  if (el.liveModelStatus) el.liveModelStatus.textContent = "待追踪";
+  updateFileQueue("等待数据", "待导入", "连接实时画面或导入视频后开始追踪。");
+  renderEmptyState();
 }
 
 function renderUncertainty(run = state.latest) {
@@ -3696,6 +3941,7 @@ function renderUncertainty(run = state.latest) {
     el.uncertaintyStatus.textContent = "待人工测量";
     el.uncertaintyDiameterTerm.textContent = "--";
     el.uncertaintyTimingTerm.textContent = "--";
+    if (el.uncertaintyVisualTerm) el.uncertaintyVisualTerm.textContent = "--";
     el.uncertaintyCombined.textContent = "--";
     el.uncertaintyStandard.textContent = "--";
     el.uncertaintyExpanded.textContent = "--";
@@ -3706,10 +3952,11 @@ function renderUncertainty(run = state.latest) {
     el.uncertaintyStatus.textContent = "待导入";
     el.uncertaintyDiameterTerm.textContent = "--";
     el.uncertaintyTimingTerm.textContent = "--";
+    if (el.uncertaintyVisualTerm) el.uncertaintyVisualTerm.textContent = "--";
     el.uncertaintyCombined.textContent = "--";
     el.uncertaintyStandard.textContent = "--";
     el.uncertaintyExpanded.textContent = "--";
-    el.uncertaintyExpression.textContent = "导入轨迹后生成 η ± U 的结果表达。";
+    el.uncertaintyExpression.textContent = "完成追踪后生成 η ± U 的结果表达。";
     return;
   }
 
@@ -3732,6 +3979,7 @@ function renderUncertainty(run = state.latest) {
     el.uncertaintyStatus.textContent = "缺少参数";
     el.uncertaintyDiameterTerm.textContent = "--";
     el.uncertaintyTimingTerm.textContent = "--";
+    if (el.uncertaintyVisualTerm) el.uncertaintyVisualTerm.textContent = "--";
     el.uncertaintyCombined.textContent = "--";
     el.uncertaintyStandard.textContent = "--";
     el.uncertaintyExpanded.textContent = "--";
@@ -3749,6 +3997,10 @@ function renderUncertainty(run = state.latest) {
   const deltaL = Math.max(0, number(el.uncertaintyDistanceMm, 0));
   const deltaTube = Math.max(0, number(el.uncertaintyTubeDiameterMm, 0));
   const deltaH = Math.max(0, number(el.uncertaintyLiquidDepthMm, 0));
+  const deltaCalibration = Math.max(0, number(el.uncertaintyCalibrationMm, 0));
+  const deltaFocus = Math.max(0, number(el.uncertaintyFocusMm, 0));
+  const sensitivity = estimateSegmentSensitivity(run, terminalVelocity);
+  const segmentTerm = sensitivity?.relative || 0;
   const wallD = 1 + (2.4 * d) / D;
   const depthH = 1 + (1.6 * d) / H;
   const diameterCoefficient = (2 / d) - (2.4 / (wallD * D)) - (1.6 / (depthH * H));
@@ -3758,16 +4010,19 @@ function renderUncertainty(run = state.latest) {
   const tubeTerm = Math.abs(((2.4 * d) / (wallD * D * D)) * deltaTube);
   const depthTerm = Math.abs(((1.6 * d) / (depthH * H * H)) * deltaH);
   const timingTerm = Math.hypot(timeTerm, distanceTerm);
-  const combinedRel = Math.hypot(diameterTerm, timeTerm, distanceTerm, tubeTerm, depthTerm);
+  const visualSpatialTerm = Math.hypot(deltaCalibration, deltaFocus) / Math.max(l, 1e-12);
+  const visualTerm = Math.hypot(visualSpatialTerm, segmentTerm);
+  const combinedRel = Math.hypot(diameterTerm, timeTerm, distanceTerm, tubeTerm, depthTerm, visualSpatialTerm, segmentTerm);
   const standardU = eta * combinedRel;
   const expandedU = standardU * 2;
   el.uncertaintyStatus.textContent = run.source === "simulation" ? "仿真对照" : "已计算";
   el.uncertaintyDiameterTerm.textContent = formatPercent(Math.hypot(diameterTerm, tubeTerm, depthTerm));
   el.uncertaintyTimingTerm.textContent = formatPercent(timingTerm);
+  if (el.uncertaintyVisualTerm) el.uncertaintyVisualTerm.textContent = formatPercent(visualTerm);
   el.uncertaintyCombined.textContent = formatPercent(combinedRel);
   el.uncertaintyStandard.textContent = `${formatPaS(standardU)} Pa·s`;
   el.uncertaintyExpanded.textContent = `${formatPaS(expandedU)} Pa·s`;
-  el.uncertaintyExpression.textContent = `d=${d.toFixed(3)} mm，D=${D.toFixed(1)} mm，H=${H.toFixed(1)} mm，l≈${l.toFixed(1)} mm，t≈${t.toFixed(3)} s；η = ${formatPaS(eta)} ± ${formatPaS(expandedU)} Pa·s，k=2`;
+  el.uncertaintyExpression.textContent = `d=${d.toFixed(3)} mm，D=${D.toFixed(1)} mm，H=${H.toFixed(1)} mm，l≈${l.toFixed(1)} mm，t≈${t.toFixed(3)} s；AI项≈${formatPercent(visualTerm)}；η = ${formatPaS(eta)} ± ${formatPaS(expandedU)} Pa·s，k=2`;
 }
 
 function updateAccessState() {
@@ -4304,6 +4559,7 @@ function renderRun(run) {
   const idealEta = idealViscosityFromRun(run);
   const locked = shouldLockRunResults(run);
   fillExperimentInputsFromRun(run);
+  updateAccelerationSpanHint();
   if (el.studentV) el.studentV.value = finiteNumber(student.student_v) === null ? "" : String(student.student_v);
   if (el.studentEta) el.studentEta.value = finiteNumber(student.student_eta) === null ? "" : String(student.student_eta);
   el.runBadge.textContent = run.id ? `记录 #${run.id}` : "仿真对照";
@@ -4328,6 +4584,8 @@ function renderRun(run) {
   el.trackingConfidence.textContent = Number.isFinite(Number(result.tracking_confidence))
     ? `${Math.round(Number(result.tracking_confidence) * 100)}%`
     : "--";
+  if (el.segmentSensitivity) el.segmentSensitivity.textContent = formatSegmentSensitivity(run, result.terminal_velocity);
+  renderMotionPhaseCard(run);
   el.score.textContent = formatScore(student.score);
   if (run.id) {
     el.downloadReport.href = apiUrl(`/api/runs/${run.id}/report`);
@@ -4338,7 +4596,7 @@ function renderRun(run) {
     el.downloadReport.classList.add("disabled");
     clearReportPreview();
   }
-  renderDiagnostics(run.diagnostics);
+  renderDiagnostics([...(run.diagnostics || []), ...buildVisionQualityDiagnostics(run)]);
   renderStudentScoreTable(run);
   renderUncertainty(run);
   drawChart();
@@ -4356,6 +4614,8 @@ function renderLockedRunResults(run) {
   el.outlierCount.textContent = "--";
   el.segmentCv.textContent = "--";
   el.trackingConfidence.textContent = "--";
+  if (el.segmentSensitivity) el.segmentSensitivity.textContent = "--";
+  renderMotionPhaseCard(run, "locked");
   el.score.textContent = "待评分";
   el.downloadReport.href = "#";
   el.downloadReport.classList.add("disabled");
@@ -4413,7 +4673,10 @@ function renderStudentScoreTable(run) {
 
 function clearReportPreview() {
   if (el.reportPreviewPanel) el.reportPreviewPanel.hidden = true;
-  if (el.reportPreview) el.reportPreview.innerHTML = "";
+  if (el.reportPreview) {
+    delete el.reportPreview.dataset.runId;
+    el.reportPreview.innerHTML = "";
+  }
 }
 
 async function renderReportPreview(runId) {
@@ -4471,8 +4734,14 @@ function markdownTableToHtml(lines) {
 }
 
 function simulationPayload() {
+  const reference = simulationReferenceFromInputs();
   return {
     scenario: el.simScenario.value,
+    liquid: reference?.liquid || el.simScenario.value,
+    rho_liquid: reference?.densityKgM3 ?? number(el.simRhoLiquid),
+    eta_reference: reference?.viscosityPaS ?? number(el.simEtaReference),
+    temperature_c: number(el.simTemperatureC),
+    reference_temperature_c: reference?.matchedTemperature ?? null,
     radius_mm: number(el.simRadiusMm, 1.5),
     tube_diameter_mm: number(el.simTubeMm, 35),
     liquid_depth_mm: number(el.simDepthMm, 220),
@@ -4480,6 +4749,52 @@ function simulationPayload() {
     refraction: number(el.simRefraction, 0),
     lighting: number(el.simLighting, 1),
   };
+}
+
+function simulationReferenceFromInputs() {
+  const reference = findStandardViscosityReference(el.simScenario?.value);
+  const temperature = finiteNumber(el.simTemperatureC?.value);
+  if (!reference || temperature === null) return null;
+  const matched = nearestStandardViscosityPoint(reference, temperature);
+  if (!matched) return null;
+  const viscosityPaS = finiteNumber(matched.viscosityPaS);
+  const densityKgM3 = finiteNumber(matched.densityKgM3);
+  if (viscosityPaS === null || densityKgM3 === null || viscosityPaS <= 0 || densityKgM3 <= 0) return null;
+  return {
+    liquid: reference.label,
+    source: reference.source,
+    inputTemperature: temperature,
+    matchedTemperature: Number(matched.temperatureC),
+    viscosityPaS,
+    densityKgM3,
+  };
+}
+
+function renderSimulationReferenceNote(reference) {
+  if (!el.simLiquidNote) return;
+  if (!reference) {
+    el.simLiquidNote.textContent = "请选择液体并输入温度，系统会匹配最近温度表值。";
+    return;
+  }
+  const exact = Math.abs(reference.inputTemperature - reference.matchedTemperature) < 0.05;
+  const temperatureText = exact
+    ? `${reference.matchedTemperature.toFixed(1)}℃表值`
+    : `输入 ${reference.inputTemperature.toFixed(1)}℃，匹配 ${reference.matchedTemperature.toFixed(1)}℃表值`;
+  el.simLiquidNote.textContent = `${reference.liquid} · ${temperatureText} · η=${formatPaS(reference.viscosityPaS)} Pa·s，ρ=${reference.densityKgM3.toFixed(1)} kg/m³ · ${reference.source}`;
+}
+
+function updateSimulationReference({ resetDrop = true } = {}) {
+  const reference = simulationReferenceFromInputs();
+  if (reference) {
+    setInputValue(el.simEtaReference, reference.viscosityPaS);
+    setInputValue(el.simRhoLiquid, reference.densityKgM3);
+  } else {
+    if (el.simEtaReference) el.simEtaReference.value = "";
+    if (el.simRhoLiquid) el.simRhoLiquid.value = "";
+  }
+  renderSimulationReferenceNote(reference);
+  if (resetDrop) resetSimulationDrop();
+  return reference;
 }
 
 function resetSimulationDrop() {
@@ -4498,18 +4813,23 @@ function updateSimulationLabels() {
 }
 
 function applySimulationPreset() {
-  const preset = simulationPresets[el.simScenario.value] || simulationPresets.standard;
+  const preset = simulationPresets[el.simScenario.value] || simulationPresets["纯甘油"];
   el.simRadiusMm.value = preset.radius;
   el.simTubeMm.value = preset.tube;
   el.simDepthMm.value = preset.depth;
   el.simRelease.value = preset.release;
   el.simRefraction.value = preset.damping;
   el.simLighting.value = preset.stability;
-  if (el.simLiquidNote) el.simLiquidNote.textContent = preset.note;
   updateSimulationLabels();
+  updateSimulationReference({ resetDrop: false });
 }
 
 async function runSimulation() {
+  const reference = updateSimulationReference({ resetDrop: false });
+  if (!reference) {
+    showToast("请先选择液体并输入有效温度，系统匹配参考粘度后再开始仿真。");
+    return;
+  }
   setButtonLoading(el.runSimulationBtn, true, "仿真中");
   if (el.simulationStatus) el.simulationStatus.textContent = "计算中";
   el.simFeedbackState.textContent = "计算中";
@@ -5005,6 +5325,49 @@ function roundRect(context, x, y, width, height, radius) {
   context.closePath();
 }
 
+function buildVisionQualityDiagnostics(run) {
+  const diagnostics = [];
+  const sensitivity = estimateSegmentSensitivity(run, run?.result?.terminal_velocity);
+  if (sensitivity?.relative > 0.05) {
+    diagnostics.push({
+      level: "warn",
+      title: "匀速区间选择敏感",
+      message: `当前选段内分段速度差约 ${formatPercent(sensitivity.relative)}。建议拍摄完整下落区间，并重新检查匀速段起止位置，避免随意截取一小段造成 vt 偏差。`,
+    });
+  } else if (sensitivity?.relative !== undefined) {
+    diagnostics.push({
+      level: "ok",
+      title: "匀速区间复核通过",
+      message: `当前选段内分段速度差约 ${formatPercent(sensitivity.relative)}，选段变化对 vt 的影响较小。`,
+    });
+  }
+
+  const confidence = finiteNumber(run?.result?.tracking_confidence);
+  if (confidence !== null && confidence < 0.72) {
+    diagnostics.push({
+      level: "warn",
+      title: "追踪置信度偏低",
+      message: "建议检查背光、快门速度、焦点锁定和小球平面位置。离焦或曝光漂移会让小球边缘变宽，直接引入中心定位误差。",
+    });
+  }
+
+  const position = Array.isArray(run?.curves?.position) ? run.curves.position : [];
+  const depthMm = finiteNumber(run?.params?.liquid_depth_mm);
+  const ys = position.map((point) => finiteNumber(point.y)).filter((value) => value !== null);
+  if (ys.length >= 2 && depthMm !== null && depthMm > 0) {
+    const coveredMm = (Math.max(...ys) - Math.min(...ys)) * 1000;
+    const coverage = coveredMm / depthMm;
+    if (coverage < 0.55) {
+      diagnostics.push({
+        level: "warn",
+        title: "下落区间覆盖不足",
+        message: `当前追踪区间约 ${coveredMm.toFixed(1)} mm，仅占液体深度的 ${formatPercent(coverage)}。建议尽量观察完整下落过程，用于呈现加速、匀速和末端扰动变化。`,
+      });
+    }
+  }
+  return diagnostics;
+}
+
 function renderDiagnostics(items) {
   el.diagnostics.innerHTML = items
     .map(
@@ -5043,10 +5406,87 @@ async function loadRecords() {
 
 function renderRecordsTable() {
   const rows = state.records;
+  renderRecordsSummary(rows);
   el.recordsBody.innerHTML = rows.length
     ? rows.map(renderRecordRow).join("")
     : `<tr><td colspan="8">暂无真实轨迹分析记录</td></tr>`;
   syncRecordSelectionControls();
+}
+
+function compactNumberRanges(values) {
+  const sorted = [...new Set(values)]
+    .map((value) => Number(value))
+    .filter((value) => Number.isInteger(value))
+    .sort((a, b) => a - b);
+  if (!sorted.length) return "";
+  const ranges = [];
+  let start = sorted[0];
+  let previous = sorted[0];
+  for (let index = 1; index < sorted.length; index += 1) {
+    const current = sorted[index];
+    if (current === previous + 1) {
+      previous = current;
+      continue;
+    }
+    ranges.push(start === previous ? String(start) : `${start}-${previous}`);
+    start = current;
+    previous = current;
+  }
+  ranges.push(start === previous ? String(start) : `${start}-${previous}`);
+  return ranges.join("、");
+}
+
+function renderRecordsSummary(rows) {
+  if (!el.recordsSummary) return;
+  const records = Array.isArray(rows) ? rows : [];
+  if (!records.length) {
+    el.recordsSummary.innerHTML = `
+      <article>
+        <span>当前库记录</span>
+        <strong>0 条</strong>
+      </article>
+      <article>
+        <span>ID 范围</span>
+        <strong>--</strong>
+      </article>
+      <article>
+        <span>录像归档</span>
+        <strong>0 条</strong>
+      </article>
+      <p>当前数据库没有可复盘记录。若你之前测过更多数据，需要确认旧数据库或服务器数据库是否已同步到当前环境。</p>
+    `;
+    return;
+  }
+  const ids = records.map((row) => Number(row.id)).filter((id) => Number.isInteger(id));
+  const minId = Math.min(...ids);
+  const maxId = Math.max(...ids);
+  const idSet = new Set(ids);
+  const missingInRange = [];
+  for (let id = minId; id <= maxId; id += 1) {
+    if (!idSet.has(id)) missingInRange.push(id);
+  }
+  const missingBefore = minId > 1 ? Array.from({ length: minId - 1 }, (_, index) => index + 1) : [];
+  const missingText = compactNumberRanges([...missingBefore, ...missingInRange]);
+  const videoCount = records.filter((row) => row.has_video).length;
+  const measuredCount = records.filter((row) => row.has_student_measurement).length;
+  const note = missingText
+    ? `已加载当前接口返回的全部记录；但当前数据库缺少 ID ${missingText}，这些记录不在本地 SQLite 文件中。`
+    : "已加载当前接口返回的全部记录，未发现 ID 缺号。";
+  el.recordsSummary.innerHTML = `
+    <article>
+      <span>当前库记录</span>
+      <strong>${records.length} 条</strong>
+    </article>
+    <article>
+      <span>ID 范围</span>
+      <strong>${minId}-${maxId}</strong>
+    </article>
+    <article>
+      <span>录像归档</span>
+      <strong>${videoCount}/${records.length}</strong>
+    </article>
+    <p>${escapeHtml(note)} 已完成人工测量 ${measuredCount} 条。</p>
+  `;
 }
 
 function renderRecordRow(row) {
@@ -5247,7 +5687,7 @@ function drawChart() {
     ctx.fillStyle = "rgba(106, 114, 109, 0.9)";
     ctx.font = "800 22px system-ui";
     ctx.textAlign = "center";
-    ctx.fillText("导入真实 CSV 后显示曲线", width / 2, height / 2);
+    ctx.fillText("连接实时画面后显示曲线", width / 2, height / 2);
     return;
   }
 
@@ -5304,12 +5744,39 @@ function drawChart() {
     yLabel: state.chartMode === "position" ? "y / m" : "v / (m·s⁻¹)",
   });
 
-  if (state.latest.segment && state.chartMode === "velocity") {
-    const segment = state.latest.segment;
-    const startT = data[segment.start]?.t ?? 0;
-    const endT = data[segment.end]?.t ?? maxT;
-    ctx.fillStyle = "rgba(50, 122, 102, 0.10)";
-    ctx.fillRect(x(startT), pad.top, x(endT) - x(startT), plotH);
+  if (state.chartMode === "velocity") {
+    const phaseSummary = estimateMotionPhases(state.latest);
+    const phaseStyles = {
+      acceleration: { color: "rgba(197, 128, 39, 0.13)", text: "#8a5a1e" },
+      uniform: { color: "rgba(50, 122, 102, 0.13)", text: "#235b4c" },
+      deceleration: { color: "rgba(166, 66, 66, 0.11)", text: "#8d3737" },
+    };
+    if (phaseSummary?.phases?.length) {
+      ctx.save();
+      phaseSummary.phases.forEach((phase) => {
+        const style = phaseStyles[phase.key];
+        if (!style) return;
+        const startX = x(Math.max(0, Math.min(maxT, phase.startTime)));
+        const endX = x(Math.max(0, Math.min(maxT, phase.endTime)));
+        const bandWidth = Math.max(0, endX - startX);
+        if (bandWidth <= 1) return;
+        ctx.fillStyle = style.color;
+        ctx.fillRect(startX, pad.top, bandWidth, plotH);
+        if (bandWidth > 58) {
+          ctx.fillStyle = style.text;
+          ctx.font = "900 12px system-ui";
+          ctx.textAlign = "center";
+          ctx.fillText(phase.label, startX + bandWidth / 2, pad.top + 18);
+        }
+      });
+      ctx.restore();
+    } else if (state.latest.segment) {
+      const segment = state.latest.segment;
+      const startT = data[segment.start]?.t ?? 0;
+      const endT = data[segment.end]?.t ?? maxT;
+      ctx.fillStyle = "rgba(50, 122, 102, 0.10)";
+      ctx.fillRect(x(startT), pad.top, x(endT) - x(startT), plotH);
+    }
   }
 
   ctx.save();
@@ -5600,9 +6067,60 @@ function moduleIndex(tier, title) {
 function applyPreset(name) {
   const preset = presets[name];
   if (!preset) return;
-  el.temperatureC.value = preset.temperatureC;
-  el.rhoLiquid.value = preset.rhoLiquid;
-  el.etaReference.value = preset.etaReference;
+  refreshLiquidReferenceInputs();
+}
+
+function refreshLiquidReferenceInputs() {
+  const liquidName = el.liquid?.value || "";
+  const reference = findStandardViscosityReference(liquidName);
+  if (!reference) {
+    renderStandardViscosityRange(null);
+    updateAccelerationSpanHint();
+    return null;
+  }
+  const temperature = finiteNumber(el.temperatureC?.value);
+  if (temperature === null) {
+    if (el.rhoLiquid) el.rhoLiquid.value = "";
+    if (el.etaReference) el.etaReference.value = "";
+    renderStandardViscosityRange(null);
+    updateAccelerationSpanHint();
+    return null;
+  }
+  const matched = nearestStandardViscosityPoint(reference, temperature);
+  if (!matched) {
+    renderStandardViscosityRange(null);
+    updateAccelerationSpanHint();
+    return null;
+  }
+  setInputValue(el.rhoLiquid, matched.densityKgM3);
+  setInputValue(el.etaReference, matched.viscosityPaS);
+  renderStandardViscosityRange(null);
+  updateAccelerationSpanHint();
+  return matched;
+}
+
+function updateAccelerationSpanHint() {
+  if (!el.accelerationSpanHint) return;
+  const radiusMm = number(el.radiusMm);
+  const rhoBall = number(el.rhoBall);
+  const rhoLiquid = number(el.rhoLiquid);
+  const eta = number(el.etaReference);
+  if (![radiusMm, rhoBall, rhoLiquid, eta].every((value) => Number.isFinite(value) && value > 0) || rhoBall <= rhoLiquid) {
+    el.accelerationSpanHint.textContent = "--";
+    return;
+  }
+  const radiusM = radiusMm / 1000;
+  const vt = (2 * radiusM * radiusM * (rhoBall - rhoLiquid) * 9.80665) / (9 * eta);
+  const tau = (2 * rhoBall * radiusM * radiusM) / (9 * eta);
+  if (!Number.isFinite(vt) || !Number.isFinite(tau) || vt <= 0 || tau <= 0) {
+    el.accelerationSpanHint.textContent = "--";
+    return;
+  }
+  const t95 = -tau * Math.log(0.05);
+  const y95Mm = vt * (t95 - 0.95 * tau) * 1000;
+  const distanceText = y95Mm < 1 ? `${y95Mm.toFixed(2)} mm` : `${y95Mm.toFixed(1)} mm`;
+  const timeText = t95 < 0.1 ? `${(t95 * 1000).toFixed(1)} ms` : `${t95.toFixed(2)} s`;
+  el.accelerationSpanHint.textContent = `${distanceText} · ${timeText}`;
 }
 
 function clearExperimentInputs() {
@@ -5689,9 +6207,19 @@ function bind() {
   el.scoreReportBtn?.addEventListener("click", scoreAndGenerateReport);
   el.presetBtn.addEventListener("click", () => {
     clearExperimentInputs();
+    renderStandardViscosityRange(null, "empty");
+    renderUncertainty(null);
+    updateAccelerationSpanHint();
     showToast("已清空样本与仪器参数，请重新选择或填写。");
   });
   el.liquid.addEventListener("change", () => applyPreset(el.liquid.value));
+  el.temperatureC?.addEventListener("input", () => {
+    refreshLiquidReferenceInputs();
+    renderUncertainty();
+  });
+  [el.radiusMm, el.rhoBall, el.rhoLiquid, el.etaReference].forEach((input) => {
+    input?.addEventListener("input", updateAccelerationSpanHint);
+  });
   el.trajectoryInput.addEventListener("change", updateSelectedFile);
   el.videoPreview.addEventListener("loadedmetadata", handleVideoMetadataLoaded);
   el.videoPreview.addEventListener("error", () => {
@@ -5802,7 +6330,12 @@ function bind() {
   el.resetBlindTestBtn?.addEventListener("click", resetBlindTest);
   el.fillBlindFromRunBtn?.addEventListener("click", fillBlindFromLatestRun);
   document.querySelectorAll("[data-go-view]").forEach((button) => {
-    button.addEventListener("click", () => switchView(button.dataset.goView));
+    button.addEventListener("click", () => {
+      if (button.dataset.newExperiment === "true") {
+        resetWorkspaceSession();
+      }
+      switchView(button.dataset.goView);
+    });
   });
   [el.simRelease, el.simRefraction, el.simLighting, el.simRadiusMm, el.simTubeMm, el.simDepthMm].forEach((input) => {
     input.addEventListener("input", () => {
@@ -5811,6 +6344,7 @@ function bind() {
     });
   });
   el.simScenario.addEventListener("change", applySimulationPreset);
+  el.simTemperatureC?.addEventListener("input", () => updateSimulationReference());
   el.runSimulationBtn.addEventListener("click", runSimulation);
   document.querySelectorAll("[data-sim-chart]").forEach((button) => {
     button.addEventListener("click", () => {
@@ -5828,7 +6362,7 @@ async function init() {
   bind();
   renderQuizQuestions();
   updateAccessState();
-  updateSimulationLabels();
+  applySimulationPreset();
   syncCalibrationTargetCount();
   updateLiveCalibrationStatus();
   const initialView = window.location.hash.replace("#", "");

@@ -90,7 +90,7 @@ SIMULATION_LIQUID_PRESETS = {
 
 @dataclass
 class MeasurementParams:
-    liquid: str = "纯甘油 25℃"
+    liquid: str = "纯甘油"
     rho_liquid: float = 1261.0
     eta_reference: float = 0.945
     radius_mm: float = 1.5
@@ -104,7 +104,7 @@ class MeasurementParams:
 
 def build_params(payload: dict) -> MeasurementParams:
     return MeasurementParams(
-        liquid=str(payload.get("liquid", "纯甘油 25℃")),
+        liquid=str(payload.get("liquid", "纯甘油")),
         rho_liquid=float(payload.get("rho_liquid", 1261.0)),
         eta_reference=float(payload.get("eta_reference", 0.945)),
         radius_mm=float(payload.get("radius_mm", 1.5)),
@@ -434,18 +434,26 @@ def build_simulation(payload: dict) -> dict:
     initial_disturbance = max(0.0, min(1.0, float(payload.get("release_bias", 0.0))))
     damping_disturbance = max(0.0, min(1.0, float(payload.get("refraction", 0.0))))
     sampling_stability = max(0.2, min(1.0, float(payload.get("lighting", 1.0))))
+    preset = SIMULATION_LIQUID_PRESETS.get(scenario, SIMULATION_LIQUID_PRESETS["standard"])
     try:
         radius_mm = float(payload.get("radius_mm", 1.5))
         tube_diameter_mm = float(payload.get("tube_diameter_mm", 35.0))
         liquid_depth_mm = float(payload.get("liquid_depth_mm", 220.0))
+        rho_liquid = float(payload.get("rho_liquid", preset["rho_liquid"]))
+        eta_reference = float(payload.get("eta_reference", preset["eta_reference"]))
+        temperature_c = float(payload.get("temperature_c", preset["temperature_c"]))
     except (TypeError, ValueError):
-        raise ValueError("无法模拟：小球半径、量筒内径和待测液体深度必须是有效数字。")
+        raise ValueError("无法模拟：小球半径、量筒内径、液体深度、温度和参考物性必须是有效数字。")
     if radius_mm <= 0:
         raise ValueError("无法模拟：小球半径 r 必须大于 0 mm。")
     if tube_diameter_mm <= 0:
         raise ValueError("无法模拟：量筒内径 D 必须大于 0 mm。")
     if liquid_depth_mm <= 0:
         raise ValueError("无法模拟：待测液体深度 H 必须大于 0 mm。")
+    if rho_liquid <= 0:
+        raise ValueError("无法模拟：液体密度必须大于 0 kg/m³。")
+    if eta_reference <= 0:
+        raise ValueError("无法模拟：请先输入温度并匹配有效参考粘度 η。")
     tube_ratio = (2 * radius_mm) / tube_diameter_mm
     if tube_ratio >= 1:
         raise ValueError(
@@ -456,21 +464,20 @@ def build_simulation(payload: dict) -> dict:
             f"无法模拟：小球直径 2r={2 * radius_mm:.1f} mm 已大于或等于待测液体深度 H={liquid_depth_mm:.1f} mm，无法形成有效下落区间。"
         )
 
-    preset = SIMULATION_LIQUID_PRESETS.get(scenario, SIMULATION_LIQUID_PRESETS["standard"])
     effective_release = max(0.0, min(1.0, initial_disturbance + preset["disturbance_extra"]))
     effective_damping_noise = max(0.0, min(1.0, damping_disturbance + preset["damping_extra"]))
     effective_stability = max(0.2, min(1.0, sampling_stability + preset["stability_delta"]))
     params = MeasurementParams(
-        liquid=preset["liquid"],
-        rho_liquid=preset["rho_liquid"],
-        eta_reference=preset["eta_reference"],
+        liquid=str(payload.get("liquid") or preset["liquid"]),
+        rho_liquid=rho_liquid,
+        eta_reference=eta_reference,
         radius_mm=radius_mm,
         rho_ball=7850.0,
         tube_diameter_mm=tube_diameter_mm,
         liquid_depth_mm=liquid_depth_mm,
         noise_level=1.0 - effective_stability,
         refraction_level=effective_damping_noise,
-        temperature_c=preset["temperature_c"],
+        temperature_c=temperature_c,
     )
     tube_ratio = (2 * params.radius_mm) / params.tube_diameter_mm
     depth_ratio = params.radius_mm / params.liquid_depth_mm
@@ -600,8 +607,10 @@ def build_simulation(payload: dict) -> dict:
             "release_bias": effective_release,
             "refraction": effective_damping_noise,
             "lighting": effective_stability,
-            "known_liquid": preset["liquid"],
+            "known_liquid": params.liquid,
+            "known_temperature_c": params.temperature_c,
             "known_eta": params.eta_reference,
+            "known_density": params.rho_liquid,
             "fall_time_s": fall_time_s,
             "wall_correction": simulated["wall_correction"],
             "reynolds_correction": simulated["reynolds_correction"],

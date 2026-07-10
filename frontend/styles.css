@@ -2122,7 +2122,9 @@ body.calibration-fullscreen-active {
 
 .live-control-panel,
 .calibration-rod-card,
-.nonlinear-correction-card {
+.nonlinear-correction-card,
+.vision-quality-card,
+.motion-phase-card {
   border-radius: 15px;
   border: 1px solid rgba(217, 221, 213, 0.9);
   background: rgba(255, 255, 255, 0.76);
@@ -2166,7 +2168,9 @@ body.calibration-fullscreen-active {
 
 .live-status-grid span,
 .calibration-rod-card span,
-.nonlinear-correction-card span {
+.nonlinear-correction-card span,
+.vision-quality-card span,
+.motion-phase-card span {
   display: block;
   color: var(--accent);
   font-size: 12px;
@@ -2385,7 +2389,9 @@ body.calibration-fullscreen-active {
 }
 
 .calibration-rod-card,
-.nonlinear-correction-card {
+.nonlinear-correction-card,
+.vision-quality-card,
+.motion-phase-card {
   display: grid;
   grid-template-columns: 1fr;
   gap: 12px;
@@ -2398,7 +2404,9 @@ body.calibration-fullscreen-active {
 }
 
 .calibration-rod-card strong,
-.nonlinear-correction-card strong {
+.nonlinear-correction-card strong,
+.vision-quality-card strong,
+.motion-phase-card strong {
   display: block;
   margin-top: 5px;
   color: var(--ink);
@@ -2406,7 +2414,9 @@ body.calibration-fullscreen-active {
 }
 
 .calibration-rod-card p,
-.nonlinear-correction-card p {
+.nonlinear-correction-card p,
+.vision-quality-card p,
+.motion-phase-card p {
   margin: 7px 0 0;
   color: var(--muted);
   font-size: 12px;
@@ -2419,6 +2429,82 @@ body.calibration-fullscreen-active {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 10px;
+}
+
+.vision-quality-card {
+  gap: 10px;
+}
+
+.vision-quality-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.vision-quality-grid article {
+  min-width: 0;
+  min-height: 96px;
+  padding: 10px;
+  border-radius: 13px;
+  border: 1px solid rgba(217, 221, 213, 0.78);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(247, 250, 247, 0.78));
+}
+
+.vision-quality-grid strong {
+  font-size: 15px;
+}
+
+.vision-quality-grid p {
+  margin-top: 6px;
+}
+
+.motion-phase-card {
+  gap: 10px;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.9), rgba(246, 249, 247, 0.82)),
+    linear-gradient(90deg, rgba(50, 122, 102, 0.08), transparent);
+}
+
+.motion-phase-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.motion-phase-grid article {
+  min-width: 0;
+  min-height: 92px;
+  padding: 10px;
+  border-radius: 13px;
+  border: 1px solid rgba(217, 221, 213, 0.8);
+  background: rgba(255, 255, 255, 0.82);
+}
+
+.motion-phase-grid article:nth-child(1) {
+  border-color: rgba(197, 128, 39, 0.22);
+  background: linear-gradient(180deg, rgba(255, 249, 240, 0.96), rgba(255, 255, 255, 0.82));
+}
+
+.motion-phase-grid article:nth-child(2) {
+  border-color: rgba(50, 122, 102, 0.24);
+  background: linear-gradient(180deg, rgba(238, 248, 243, 0.96), rgba(255, 255, 255, 0.82));
+}
+
+.motion-phase-grid article:nth-child(3) {
+  border-color: rgba(166, 66, 66, 0.18);
+  background: linear-gradient(180deg, rgba(255, 245, 244, 0.94), rgba(255, 255, 255, 0.82));
+}
+
+.motion-phase-grid strong {
+  margin-top: 4px;
+  font-family: var(--mono);
+  font-size: 17px;
+}
+
+.motion-phase-grid p {
+  margin-top: 7px;
+  font-size: 11px;
+  line-height: 1.42;
 }
 
 .rod-form-grid label,
@@ -3009,9 +3095,11 @@ input[type="range"]:focus-visible {
 }
 
 .simulation-layout {
-  grid-template-columns: minmax(250px, 0.28fr) minmax(660px, 1.2fr) minmax(250px, 0.3fr);
-  grid-template-areas: "sim-controls sim-scene sim-feedback";
-  gap: clamp(14px, 1.4vw, 22px);
+  grid-template-columns: minmax(330px, 0.42fr) minmax(0, 1fr);
+  grid-template-areas:
+    "sim-controls sim-scene"
+    "sim-feedback sim-scene";
+  gap: clamp(14px, 1.4vw, 20px);
   align-items: start;
 }
 
@@ -4337,17 +4425,142 @@ input[type="range"]:focus-visible {
 .simulation-feedback-panel {
   display: flex;
   flex-direction: column;
+  gap: 14px;
+}
+
+.simulation-setup-header,
+.simulation-scene-head {
+  display: flex;
   gap: 16px;
+  align-items: flex-start;
+  justify-content: space-between;
 }
 
-.simulation-control-panel .section-title {
-  display: block;
+.simulation-setup-header {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid rgba(217, 221, 213, 0.9);
 }
 
-.simulation-control-panel .section-title h2 {
-  font-size: clamp(30px, 2.4vw, 40px);
-  line-height: 1.02;
-  white-space: nowrap;
+.simulation-setup-header h2,
+.simulation-scene-head h2 {
+  margin: 0;
+  color: var(--ink);
+  font-size: clamp(22px, 1.65vw, 30px);
+  line-height: 1.08;
+  letter-spacing: 0;
+}
+
+.simulation-setup-header p:not(.eyebrow) {
+  max-width: 760px;
+  margin: 8px 0 0;
+  color: #5d665f;
+  font-size: 13px;
+  font-weight: 760;
+  line-height: 1.55;
+}
+
+.simulation-setup-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+}
+
+.simulation-field-group {
+  display: grid;
+  gap: 9px;
+  padding: 11px;
+  border: 1px solid rgba(217, 221, 213, 0.92);
+  border-radius: 16px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.88), rgba(247, 249, 246, 0.94)),
+    #f8faf7;
+}
+
+.simulation-group-title {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 26px;
+}
+
+.simulation-group-title span {
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 24px;
+  border-radius: 9px;
+  color: var(--accent-dark);
+  background: rgba(50, 122, 102, 0.1);
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 950;
+}
+
+.simulation-group-title strong {
+  color: #29302b;
+  font-size: 14px;
+  font-weight: 950;
+}
+
+.simulation-field-group .form-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 0;
+}
+
+.simulation-field-group.geometry-group .form-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.simulation-field-group label {
+  gap: 6px;
+}
+
+.simulation-field-group label span,
+.simulation-ranges span {
+  font-size: 12px;
+}
+
+.simulation-field-group input,
+.simulation-field-group select {
+  min-height: 40px;
+  background: rgba(255, 255, 255, 0.92);
+}
+
+.simulation-ranges {
+  grid-template-columns: 1fr;
+  gap: 9px;
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
+}
+
+.simulation-ranges label {
+  gap: 4px;
+  padding: 8px 10px;
+  border: 1px solid rgba(217, 221, 213, 0.75);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.simulation-ranges input[type="range"] {
+  min-height: 24px;
+}
+
+.simulation-action-row {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+  align-items: stretch;
+}
+
+.simulation-action-row .primary-button,
+.simulation-action-row .ghost-button {
+  justify-content: center;
+  min-height: 46px;
 }
 
 .simulation-advice-head {
@@ -4452,16 +4665,16 @@ input[type="range"]:focus-visible {
 
 #simulationCanvas {
   width: 100%;
-  margin-top: 10px;
-  aspect-ratio: 1.72 / 1;
-  border-radius: 16px;
+  margin-top: 12px;
+  aspect-ratio: 1.86 / 1;
+  border-radius: 18px;
   border: 1px solid rgba(217, 221, 213, 0.92);
   background: #fbfcfa;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9);
 }
 
 .simulation-chart-tabs {
-  margin-top: 12px;
+  margin-top: 0;
   justify-content: flex-start;
 }
 
@@ -4470,8 +4683,37 @@ input[type="range"]:focus-visible {
   padding: 8px 14px;
 }
 
-.simulation-metrics .metric strong {
-  font-size: clamp(18px, 1.45vw, 25px);
+.simulation-result-ribbon {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 10px;
+  padding: 8px;
+  border: 1px solid rgba(217, 221, 213, 0.9);
+  border-radius: 16px;
+  background: rgba(247, 249, 246, 0.78);
+}
+
+.simulation-result-ribbon .metric {
+  min-height: 70px;
+  padding: 10px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.86);
+}
+
+.simulation-result-ribbon .metric::after {
+  display: none;
+}
+
+.simulation-result-ribbon .metric span {
+  margin-bottom: 7px;
+  font-size: 11px;
+}
+
+.simulation-result-ribbon .metric strong {
+  margin-bottom: 0;
+  font-size: clamp(14px, 1.08vw, 19px);
+  line-height: 1.15;
 }
 
 .simulation-advice-list {
@@ -4583,7 +4825,7 @@ input[type="range"]:focus-visible {
 
 @media (max-width: 1240px) {
   .simulation-layout {
-    grid-template-columns: minmax(260px, 0.38fr) minmax(0, 1fr);
+    grid-template-columns: minmax(320px, 0.42fr) minmax(0, 1fr);
     grid-template-areas:
       "sim-controls sim-scene"
       "sim-feedback sim-scene";
@@ -4607,8 +4849,8 @@ input[type="range"]:focus-visible {
     grid-template-columns: 1fr;
     grid-template-areas:
       "sim-controls"
-      "sim-feedback"
-      "sim-scene";
+      "sim-scene"
+      "sim-feedback";
     gap: 14px;
   }
 
@@ -4624,13 +4866,13 @@ input[type="range"]:focus-visible {
     border-radius: 14px;
   }
 
-  .simulation-metrics {
+  .simulation-result-ribbon {
     grid-template-columns: 1fr;
     gap: 9px;
     margin-top: 12px;
   }
 
-  .simulation-metrics .metric {
+  .simulation-result-ribbon .metric {
     min-height: 86px;
     padding: 13px;
   }
@@ -5043,7 +5285,7 @@ input[type="range"]:focus-visible {
 
 .algorithm-strip {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 10px;
   margin-top: 10px;
   padding: 10px;
@@ -5308,6 +5550,52 @@ input[type="range"]:focus-visible {
   align-items: center;
   justify-content: flex-end;
   gap: 10px;
+}
+
+.records-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 14px;
+  padding: 12px;
+  border-radius: 15px;
+  border: 1px solid rgba(217, 221, 213, 0.92);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.82), rgba(247, 250, 247, 0.9)),
+    #f7f9f6;
+}
+
+.records-summary article {
+  min-width: 0;
+  padding: 11px 12px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.82);
+  border: 1px solid rgba(217, 221, 213, 0.78);
+}
+
+.records-summary span {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 920;
+}
+
+.records-summary strong {
+  display: block;
+  margin-top: 5px;
+  color: var(--accent-dark);
+  font-family: var(--mono);
+  font-size: clamp(17px, 1.2vw, 22px);
+  line-height: 1.1;
+}
+
+.records-summary p {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: #59635d;
+  font-size: 13px;
+  font-weight: 760;
+  line-height: 1.55;
 }
 
 .operations-grid {
@@ -7429,7 +7717,7 @@ svg {
   }
 
   .simulation-layout {
-    grid-template-columns: minmax(250px, 0.36fr) minmax(0, 1fr);
+    grid-template-columns: minmax(320px, 0.42fr) minmax(0, 1fr);
     grid-template-areas:
       "sim-controls sim-scene"
       "sim-feedback sim-scene";
@@ -7472,6 +7760,9 @@ svg {
   .fall-offset-form,
   .calibration-result-strip,
   .nonlinear-status-strip,
+  .vision-quality-grid,
+  .motion-phase-grid,
+  .records-summary,
   .video-meta-grid,
   .readiness-cards,
   .detail-grid,
@@ -7505,11 +7796,16 @@ svg {
     grid-template-columns: 1fr;
     grid-template-areas:
       "sim-controls"
-      "sim-feedback"
-      "sim-scene";
+      "sim-scene"
+      "sim-feedback";
   }
 
-  .simulation-control-panel .section-title h2,
+  .simulation-setup-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .simulation-setup-header h2,
+  .simulation-scene-head h2,
   .simulation-advice-title h2 {
     white-space: normal;
   }
@@ -7518,7 +7814,7 @@ svg {
     aspect-ratio: 1.45 / 1;
   }
 
-  .simulation-metrics {
+  .simulation-result-ribbon {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
@@ -7568,7 +7864,10 @@ svg {
   .algorithm-strip,
   .uncertainty-input-grid,
   .uncertainty-results,
-  .simulation-metrics,
+  .vision-quality-grid,
+  .motion-phase-grid,
+  .records-summary,
+  .simulation-result-ribbon,
   .detail-grid,
   .roadmap-grid,
   .video-pipeline-list,
@@ -7584,6 +7883,13 @@ svg {
     display: grid;
     grid-template-columns: 1fr;
     width: 100%;
+  }
+
+  .simulation-setup-header,
+  .simulation-scene-head,
+  .simulation-action-row {
+    display: grid;
+    grid-template-columns: 1fr;
   }
 
   .chart-tabs button,
@@ -7606,6 +7912,8 @@ svg {
   .fall-offset-form,
   .edge-mark-actions,
   .rod-form-grid,
+  .simulation-field-group .form-grid,
+  .simulation-field-group.geometry-group .form-grid,
   .calibration-result-strip,
   .nonlinear-status-strip,
   .video-meta-grid {

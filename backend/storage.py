@@ -35,6 +35,7 @@ SUPABASE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY") or os.environ.get("SU
 SUPABASE_TABLE = os.environ.get("SUPABASE_RUNS_TABLE", "runs")
 SUPABASE_VIDEO_BUCKET = os.environ.get("SUPABASE_VIDEO_BUCKET", "").strip()
 SUPABASE_VIDEO_PREFIX = os.environ.get("SUPABASE_VIDEO_PREFIX", "videos").strip("/")
+REMOTE_VIDEO_BASE_URL = os.environ.get("REMOTE_VIDEO_BASE_URL", "").rstrip("/")
 
 
 def use_supabase() -> bool:
@@ -53,11 +54,13 @@ def storage_status() -> dict:
             "table": SUPABASE_TABLE,
             "video_backend": "supabase_storage" if use_supabase_storage() else "local_files",
             "video_bucket": SUPABASE_VIDEO_BUCKET or None,
+            "remote_video_base_url": REMOTE_VIDEO_BASE_URL or None,
         }
     return {
         "backend": "sqlite",
         "path": str(DB_PATH),
         "video_backend": "local_files",
+        "remote_video_base_url": REMOTE_VIDEO_BASE_URL or None,
     }
 
 
@@ -122,6 +125,40 @@ def supabase_storage_request(
         raise RuntimeError(f"Supabase Storage request failed: {error.code} {detail}") from error
     except URLError as error:
         raise RuntimeError(f"Supabase Storage request failed: {error.reason}") from error
+
+
+def use_remote_video_server() -> bool:
+    return bool(REMOTE_VIDEO_BASE_URL)
+
+
+def remote_video_request(
+    method: str,
+    path: str,
+    data: bytes | None = None,
+    content_type: str = "application/octet-stream",
+    range_header: str | None = None,
+) -> dict:
+    if not use_remote_video_server():
+        raise RuntimeError("Remote video server is not configured")
+    url = f"{REMOTE_VIDEO_BASE_URL}{path if path.startswith('/') else f'/{path}'}"
+    headers = {"Accept": "application/json" if method != "GET" else "*/*"}
+    if data is not None:
+        headers["Content-Type"] = content_type
+    if range_header:
+        headers["Range"] = range_header
+    request = Request(url, data=data, headers=headers, method=method)
+    try:
+        with urlopen(request, timeout=90) as response:
+            return {
+                "status": response.status,
+                "headers": dict(response.headers.items()),
+                "body": response.read(),
+            }
+    except HTTPError as error:
+        detail = error.read().decode("utf-8", errors="replace")
+        raise RuntimeError(f"Remote video request failed: {error.code} {detail}") from error
+    except URLError as error:
+        raise RuntimeError(f"Remote video request failed: {error.reason}") from error
 
 
 def supabase_video_path(filename: str) -> str:
@@ -315,16 +352,52 @@ def read_supabase_video_asset(filename: str, range_header: str | None = None) ->
     }
 
 
+def read_remote_video_asset(filename: str, range_header: str | None = None, head_only: bool = False) -> dict | None:
+    if not use_remote_video_server():
+        return None
+    clean_name = Path(filename).name
+    if not clean_name:
+        return None
+    try:
+        response = remote_video_request("HEAD" if head_only else "GET", f"/api/videos/{quote(clean_name)}", range_header=range_header)
+    except RuntimeError:
+        return None
+    headers = response["headers"]
+    return {
+        "status": int(response["status"]),
+        "content_type": headers.get("content-type") or headers.get("Content-Type") or mimetypes_guess_video_type(clean_name),
+        "headers": {
+            "Accept-Ranges": headers.get("accept-ranges") or headers.get("Accept-Ranges") or "bytes",
+            "Content-Range": headers.get("content-range") or headers.get("Content-Range"),
+            "Content-Length": headers.get("content-length") or headers.get("Content-Length") or str(len(response["body"])),
+        },
+        "body": response["body"],
+    }
+
+
 def mimetypes_guess_video_type(filename: str) -> str:
     import mimetypes
 
     return mimetypes.guess_type(filename)[0] or "video/webm"
 
 
+def upload_remote_run_video(run_id: int, data: bytes, mime_type: str) -> dict | None:
+    if not use_remote_video_server():
+        return None
+    response = remote_video_request("POST", f"/api/runs/{int(run_id)}/video", data=data, content_type=mime_type)
+    raw_body = response["body"].decode("utf-8", errors="replace")
+    payload = json.loads(raw_body) if raw_body else {}
+    return payload.get("video")
+
+
 def save_run_video(run_id: int, filename: str, mime_type: str, data: bytes) -> dict | None:
     if use_supabase_storage():
         upload_supabase_video(filename, data, mime_type)
         return attach_run_video(run_id, filename, mime_type, len(data), backend="supabase_storage")
+    if use_remote_video_server():
+        remote_video = upload_remote_run_video(run_id, data, mime_type)
+        if remote_video:
+            return remote_video
     VIDEO_DIR.mkdir(parents=True, exist_ok=True)
     (VIDEO_DIR / filename).write_bytes(data)
     return attach_run_video(run_id, filename, mime_type, len(data), backend="local")
