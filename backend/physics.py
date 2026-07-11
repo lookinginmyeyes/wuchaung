@@ -310,10 +310,12 @@ def find_uniform_segment(velocities: list[dict]) -> dict:
                 [{"x": point["t"], "y": point["v"], "weight": point.get("confidence", 1.0)} for point in selected_points]
             )
             slope_penalty = abs(fit["slope"]) / avg
+            center_ratio = (start + window_size / 2) / max(1, n)
             early_penalty = 0.055 if start < n * 0.28 else 0
+            plateau_position_penalty = max(0.0, 0.64 - center_ratio) * 0.055
             short_penalty = 0.018 if window_size < n * 0.22 else 0
             confidence_penalty = (1 - avg_conf) * 0.11
-            score = cv + slope_penalty * 8 + early_penalty + short_penalty + confidence_penalty
+            score = cv + slope_penalty * 8 + early_penalty + plateau_position_penalty + short_penalty + confidence_penalty
             if score < best["score"]:
                 best = {
                     "start": start,
@@ -323,8 +325,212 @@ def find_uniform_segment(velocities: list[dict]) -> dict:
                     "slope_penalty": slope_penalty,
                     "avg_confidence": avg_conf,
                     "window_size": window_size,
+                    "center_ratio": center_ratio,
                 }
     return best
+
+
+def interpolate_frame_position(frames: list[dict], target_time: float) -> float | None:
+    if not frames:
+        return None
+    if target_time <= frames[0]["t"]:
+        return frames[0]["corrected_y"]
+    if target_time >= frames[-1]["t"]:
+        return frames[-1]["corrected_y"]
+    for index in range(1, len(frames)):
+        previous = frames[index - 1]
+        current = frames[index]
+        if target_time <= current["t"]:
+            span = max(1e-9, current["t"] - previous["t"])
+            ratio = (target_time - previous["t"]) / span
+            return previous["corrected_y"] + (current["corrected_y"] - previous["corrected_y"]) * ratio
+    return frames[-1]["corrected_y"]
+
+
+def velocity_phase_trend(points: list[dict], terminal_velocity: float) -> dict:
+    if len(points) < 3:
+        return {"trend": "transition", "slope": 0.0, "delta": 0.0, "threshold": 0.0, "cv": 0.0}
+    selected = [point for point in points if point.get("v") is not None]
+    if len(selected) < 3:
+        return {"trend": "transition", "slope": 0.0, "delta": 0.0, "threshold": 0.0, "cv": 0.0}
+    fit = weighted_linear_fit(
+        [{"x": point["t"], "y": point["v"], "weight": point.get("confidence", 1.0)} for point in selected]
+    )
+    values = [point["v"] for point in selected]
+    avg_abs = max(abs(mean(values)), abs(terminal_velocity), 1e-6)
+    sigma = robust_sigma(values)
+    duration = max(1e-9, selected[-1]["t"] - selected[0]["t"])
+    delta = fit["slope"] * duration
+    threshold = max(0.06 * avg_abs, 1.35 * sigma, 0.00008)
+    cv = sigma / avg_abs
+    if delta > threshold:
+        trend = "accelerating"
+    elif delta < -threshold:
+        trend = "decelerating"
+    else:
+        trend = "stable"
+    return {"trend": trend, "slope": fit["slope"], "delta": delta, "threshold": threshold, "cv": cv}
+
+
+def build_motion_phase(
+    key: str,
+    label: str,
+    points: list[dict],
+    frames: list[dict],
+    terminal_velocity: float,
+    description: str,
+) -> dict:
+    if not points:
+        return {
+            "key": key,
+            "label": label,
+            "trend": "transition",
+            "start_time": frames[0]["t"] if frames else 0.0,
+            "end_time": frames[0]["t"] if frames else 0.0,
+            "time_s": 0.0,
+            "distance_m": None,
+            "description": description,
+        }
+    trend_info = velocity_phase_trend(points, terminal_velocity)
+    start_time = points[0]["t"]
+    end_time = points[-1]["t"]
+    start_y = interpolate_frame_position(frames, start_time)
+    end_y = interpolate_frame_position(frames, end_time)
+    distance_m = None if start_y is None or end_y is None else abs(end_y - start_y)
+    return {
+        "key": key,
+        "label": label,
+        "trend": trend_info["trend"],
+        "start_time": start_time,
+        "end_time": end_time,
+        "time_s": max(0.0, end_time - start_time),
+        "distance_m": distance_m,
+        "slope": trend_info["slope"],
+        "delta_v": trend_info["delta"],
+        "trend_threshold": trend_info["threshold"],
+        "cv": trend_info["cv"],
+        "description": description,
+    }
+
+
+def classify_motion_phases(frames: list[dict], velocities: list[dict], segment: dict, terminal_velocity: float) -> list[dict]:
+    if len(velocities) < 4:
+        return []
+    n = len(velocities)
+    uniform_start = max(0, min(int(segment.get("start", 0)), n - 1))
+    uniform_end = max(uniform_start, min(int(segment.get("end", n - 1)), n - 1))
+    entry_points = velocities[: max(1, uniform_start + 1)]
+    uniform_points = velocities[uniform_start : uniform_end + 1]
+    terminal_points = velocities[uniform_end:]
+
+    entry_trend = velocity_phase_trend(entry_points, terminal_velocity)["trend"]
+    if entry_trend == "accelerating":
+        entry_label = "入液加速段"
+        entry_key = "entry_acceleration"
+        entry_desc = "入液初段速度上升，可用于瞬态法复核粘度。"
+    elif entry_trend == "decelerating":
+        entry_label = "入液减速段"
+        entry_key = "entry_deceleration"
+        entry_desc = "入液初速高于终端速度，速度向平台回落。"
+    else:
+        entry_label = "入液过渡段"
+        entry_key = "entry_transition"
+        entry_desc = "入液初段趋势较弱，主要作为平台前过渡。"
+
+    terminal_trend = velocity_phase_trend(terminal_points, terminal_velocity)["trend"]
+    if terminal_trend == "stable":
+        terminal_label = "后段平台延续"
+        terminal_key = "terminal_stable"
+        terminal_desc = "平台后段仍接近稳定，可作为复核区间。"
+    elif terminal_trend == "accelerating":
+        terminal_label = "末端加速扰动"
+        terminal_key = "terminal_acceleration"
+        terminal_desc = "后段速度继续上升，需检查选段、视角或追踪。"
+    else:
+        terminal_label = "末端减速扰动"
+        terminal_key = "terminal_deceleration"
+        terminal_desc = "后段速度下降，常见于近底部、出ROI或反光干扰。"
+
+    entry_phase = build_motion_phase(entry_key, entry_label, entry_points, frames, terminal_velocity, entry_desc)
+    uniform_phase = build_motion_phase("uniform", "稳定平台段", uniform_points, frames, terminal_velocity, "用于终端速度与主粘度结果的稳健拟合。")
+    uniform_phase["trend"] = "stable"
+    terminal_phase = build_motion_phase(terminal_key, terminal_label, terminal_points, frames, terminal_velocity, terminal_desc)
+    return [entry_phase, uniform_phase, terminal_phase]
+
+
+def fit_transient_viscosity(params: MeasurementParams, velocities: list[dict], segment: dict, terminal_velocity: float) -> dict:
+    n = len(velocities)
+    if n < 12:
+        return {"available": False, "reason": "速度点不足，无法进行入液瞬态拟合。"}
+    uniform_start = max(0, min(int(segment.get("start", 0)), n - 1))
+    transient_end = uniform_start if uniform_start >= 8 else max(8, int(n * 0.36))
+    transient_end = max(8, min(transient_end, n - 2))
+    points = [point for point in velocities[: transient_end + 1] if point.get("v") is not None and point["v"] > 0]
+    if len(points) < 8:
+        return {"available": False, "reason": "入液初段有效速度点不足。"}
+
+    t0 = points[0]["t"]
+    shifted = [{**point, "x": point["t"] - t0, "y": point["v"]} for point in points]
+    duration = shifted[-1]["x"] - shifted[0]["x"]
+    if duration <= 0.04:
+        return {"available": False, "reason": "入液初段时间跨度过短。"}
+
+    tau_min = max(0.006, duration / 90)
+    tau_max = max(tau_min * 4, duration * 6)
+    best = None
+    for index in range(96):
+        ratio = index / 95
+        tau = tau_min * ((tau_max / tau_min) ** ratio)
+        transformed = [
+            {
+                "x": math.exp(-point["x"] / tau),
+                "y": point["y"],
+                "weight": point.get("confidence", 1.0),
+            }
+            for point in shifted
+        ]
+        fit = weighted_linear_fit(transformed)
+        v_inf = fit["intercept"]
+        v0 = fit["intercept"] + fit["slope"]
+        if v_inf <= 0 or v0 <= 0:
+            continue
+        plausibility = abs(math.log(max(v_inf, 1e-9) / max(terminal_velocity, 1e-9)))
+        score = fit["rmse"] / max(abs(v_inf), 1e-6) + 0.08 * plausibility + max(0.0, 0.35 - fit["r2"]) * 0.35
+        if best is None or score < best["score"]:
+            best = {"tau": tau, "fit": fit, "v_inf": v_inf, "v0": v0, "score": score}
+
+    if not best:
+        return {"available": False, "reason": "入液瞬态曲线无法稳定拟合。"}
+
+    radius_m = params.radius_mm / 1000
+    tube_radius_m = params.tube_diameter_mm / 2000
+    liquid_depth_m = params.liquid_depth_mm / 1000
+    effective_density = params.rho_ball + 0.5 * params.rho_liquid
+    base_eta = 2 * radius_m * radius_m * effective_density / (9 * best["tau"])
+    eta = base_eta
+    for _ in range(6):
+        factors = correction_factors(radius_m, tube_radius_m, liquid_depth_m, params.rho_liquid, max(best["v_inf"], 1e-9), eta)
+        eta = max(base_eta / factors["correction_total"], 1e-9)
+    factors = correction_factors(radius_m, tube_radius_m, liquid_depth_m, params.rho_liquid, max(best["v_inf"], 1e-9), eta)
+    direction = "加速入液" if best["v0"] < best["v_inf"] else "减速入液"
+    return {
+        "available": True,
+        "method": "entry_exponential_relaxation",
+        "direction": direction,
+        "tau_s": best["tau"],
+        "v0": best["v0"],
+        "v_inf": best["v_inf"],
+        "viscosity": eta,
+        "ideal_viscosity": base_eta,
+        "r2": best["fit"]["r2"],
+        "rmse": best["fit"]["rmse"],
+        "point_count": len(points),
+        "start_time": points[0]["t"],
+        "end_time": points[-1]["t"],
+        "wall_correction": factors["wall_correction"],
+        "reynolds_correction": factors["reynolds_correction"],
+        "correction_total": factors["correction_total"],
+    }
 
 
 def preprocess_frames(frames: list[dict]) -> tuple[list[dict], dict]:
@@ -708,6 +914,8 @@ def analyze_frames(params: MeasurementParams, frames: list[dict], student: dict 
     eta = corrected["viscosity"]
     ideal_eta = corrected["ideal_viscosity"]
     re = corrected["re"]
+    motion_phases = classify_motion_phases(frames, velocities, segment, vt)
+    transient = fit_transient_viscosity(params, velocities, segment, vt)
     selected_v = [point["v"] for point in velocities[segment["start"] : segment["end"]]]
     uncertainty_a = (robust_sigma(selected_v) / math.sqrt(max(1, len(selected_v)))) if len(selected_v) > 1 else 0
     if fit["slope_stderr"]:
@@ -745,10 +953,12 @@ def analyze_frames(params: MeasurementParams, frames: list[dict], student: dict 
             "velocity": [{"t": point["t"], "v": round(point["v"], 6)} for point in velocities],
         },
         "segment": segment,
+        "motion_phases": motion_phases,
         "result": {
             "terminal_velocity": vt,
             "viscosity": eta,
             "ideal_viscosity": corrected["ideal_viscosity"],
+            "transient": transient,
             "r2": fit["r2"],
             "re": re,
             "wall_correction": corrected["wall_correction"],

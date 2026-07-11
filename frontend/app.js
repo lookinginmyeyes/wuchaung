@@ -229,6 +229,7 @@ const el = {
   standardViscosityRange: document.getElementById("standardViscosityRange"),
   standardViscosityNote: document.getElementById("standardViscosityNote"),
   viscosity: document.getElementById("viscosity"),
+  transientViscosity: document.getElementById("transientViscosity"),
   r2: document.getElementById("r2"),
   re: document.getElementById("re"),
   fitMethod: document.getElementById("fitMethod"),
@@ -238,6 +239,12 @@ const el = {
   segmentSensitivity: document.getElementById("segmentSensitivity"),
   accelerationSpanHint: document.getElementById("accelerationSpanHint"),
   motionPhaseStatus: document.getElementById("motionPhaseStatus"),
+  motionEntryLabel: document.getElementById("motionEntryLabel"),
+  motionEntryDetail: document.getElementById("motionEntryDetail"),
+  motionUniformLabel: document.getElementById("motionUniformLabel"),
+  motionUniformDetail: document.getElementById("motionUniformDetail"),
+  motionTerminalLabel: document.getElementById("motionTerminalLabel"),
+  motionTerminalDetail: document.getElementById("motionTerminalDetail"),
   motionAccelLength: document.getElementById("motionAccelLength"),
   motionUniformLength: document.getElementById("motionUniformLength"),
   motionDecelLength: document.getElementById("motionDecelLength"),
@@ -1159,6 +1166,16 @@ function formatPaS(value) {
   return parsed.toExponential(2);
 }
 
+function formatTransientViscosity(run) {
+  const transient = run?.result?.transient || {};
+  if (!transient.available) return "--";
+  const eta = finiteNumber(transient.viscosity);
+  if (eta === null) return "--";
+  const r2 = finiteNumber(transient.r2);
+  if (r2 !== null && r2 < 0.6) return "拟合不足";
+  return `${formatPaS(eta)} Pa·s`;
+}
+
 function formatViscosityRange(lower, upper) {
   const safeLower = finiteNumber(lower);
   const safeUpper = finiteNumber(upper);
@@ -1342,6 +1359,38 @@ function interpolatePositionAtTime(positionCurve, targetTime) {
 function estimateMotionPhases(run) {
   const velocityCurve = Array.isArray(run?.curves?.velocity) ? run.curves.velocity : [];
   const positionCurve = Array.isArray(run?.curves?.position) ? run.curves.position : [];
+  const backendPhases = Array.isArray(run?.motion_phases) ? run.motion_phases : [];
+  if (backendPhases.length) {
+    const phases = backendPhases.map((phase) => {
+      const startTime = finiteNumber(phase.start_time) ?? finiteNumber(phase.startTime) ?? 0;
+      const endTime = finiteNumber(phase.end_time) ?? finiteNumber(phase.endTime) ?? startTime;
+      const startY = interpolatePositionAtTime(positionCurve, startTime);
+      const endY = interpolatePositionAtTime(positionCurve, endTime);
+      const backendDistance = finiteNumber(phase.distance_m) ?? finiteNumber(phase.distanceM);
+      const distanceM = backendDistance !== null
+        ? backendDistance
+        : startY === null || endY === null
+          ? null
+          : Math.abs(endY - startY);
+      return {
+        key: phase.key || "phase",
+        label: phase.label || "运动阶段",
+        trend: phase.trend || "transition",
+        description: phase.description || "",
+        startTime,
+        endTime,
+        timeS: Math.max(0, endTime - startTime),
+        distanceM,
+      };
+    });
+    return {
+      phases,
+      acceleration: phases[0],
+      uniform: phases[1],
+      deceleration: phases[2],
+      totalDistanceM: phases.reduce((sum, phase) => sum + (finiteNumber(phase.distanceM) || 0), 0),
+    };
+  }
   const segment = run?.segment || {};
   if (velocityCurve.length < 4 || !positionCurve.length || segment.start === undefined || segment.end === undefined) return null;
   const maxVelocityIndex = velocityCurve.length - 1;
@@ -1384,9 +1433,30 @@ function formatPhaseLength(phase) {
   return `${distanceMm.toFixed(1)} mm`;
 }
 
+function resetMotionPhaseLabels() {
+  if (el.motionEntryLabel) el.motionEntryLabel.textContent = "入液阶段";
+  if (el.motionEntryDetail) el.motionEntryDetail.textContent = "自动识别加速或减速";
+  if (el.motionUniformLabel) el.motionUniformLabel.textContent = "稳定平台段";
+  if (el.motionUniformDetail) el.motionUniformDetail.textContent = "平台用于拟合终端速度";
+  if (el.motionTerminalLabel) el.motionTerminalLabel.textContent = "末端阶段";
+  if (el.motionTerminalDetail) el.motionTerminalDetail.textContent = "自动判断是否仍稳定";
+}
+
+function setMotionPhaseLabels(summary) {
+  const phases = summary?.phases || [];
+  const [entry, uniform, terminal] = phases;
+  if (el.motionEntryLabel) el.motionEntryLabel.textContent = entry?.label || "入液阶段";
+  if (el.motionEntryDetail) el.motionEntryDetail.textContent = entry?.description || "自动识别加速或减速";
+  if (el.motionUniformLabel) el.motionUniformLabel.textContent = uniform?.label || "稳定平台段";
+  if (el.motionUniformDetail) el.motionUniformDetail.textContent = uniform?.description || "平台用于拟合终端速度";
+  if (el.motionTerminalLabel) el.motionTerminalLabel.textContent = terminal?.label || "末端阶段";
+  if (el.motionTerminalDetail) el.motionTerminalDetail.textContent = terminal?.description || "自动判断是否仍稳定";
+}
+
 function renderMotionPhaseCard(run, mode = "normal") {
   if (!el.motionPhaseStatus) return;
   if (!run || mode === "empty") {
+    resetMotionPhaseLabels();
     el.motionPhaseStatus.textContent = "等待完整轨迹";
     el.motionAccelLength.textContent = "--";
     el.motionUniformLength.textContent = "--";
@@ -1394,6 +1464,7 @@ function renderMotionPhaseCard(run, mode = "normal") {
     return;
   }
   if (mode === "locked" || shouldLockRunResults(run)) {
+    resetMotionPhaseLabels();
     el.motionPhaseStatus.textContent = "待人工测量后显示";
     el.motionAccelLength.textContent = "--";
     el.motionUniformLength.textContent = "--";
@@ -1402,12 +1473,14 @@ function renderMotionPhaseCard(run, mode = "normal") {
   }
   const summary = estimateMotionPhases(run);
   if (!summary) {
+    resetMotionPhaseLabels();
     el.motionPhaseStatus.textContent = "等待自动判段";
     el.motionAccelLength.textContent = "--";
     el.motionUniformLength.textContent = "--";
     el.motionDecelLength.textContent = "--";
     return;
   }
+  setMotionPhaseLabels(summary);
   el.motionPhaseStatus.textContent = "已完成自动判段";
   el.motionAccelLength.textContent = formatPhaseLength(summary.acceleration);
   el.motionUniformLength.textContent = formatPhaseLength(summary.uniform);
@@ -3504,6 +3577,7 @@ function renderLiveTrackingPreview() {
   el.idealViscosity.textContent = "--";
   renderStandardViscosityRange(run, "empty");
   el.viscosity.textContent = "--";
+  if (el.transientViscosity) el.transientViscosity.textContent = "--";
   el.r2.textContent = "--";
   el.re.textContent = "--";
   el.fitMethod.textContent = "实时预览";
@@ -3881,6 +3955,7 @@ function renderEmptyState() {
   el.idealViscosity.textContent = "--";
   renderStandardViscosityRange(null, "empty");
   el.viscosity.textContent = "--";
+  if (el.transientViscosity) el.transientViscosity.textContent = "--";
   el.r2.textContent = "--";
   el.re.textContent = "--";
   el.fitMethod.textContent = "--";
@@ -4574,6 +4649,7 @@ function renderRun(run) {
   el.idealViscosity.textContent = idealEta === null ? "--" : `${formatPaS(idealEta)} Pa·s`;
   renderStandardViscosityRange(run);
   el.viscosity.textContent = `${formatPaS(result.viscosity)} Pa·s`;
+  if (el.transientViscosity) el.transientViscosity.textContent = formatTransientViscosity(run);
   el.r2.textContent = result.r2.toFixed(3);
   el.re.textContent = result.re.toFixed(3);
   el.fitMethod.textContent = formatFitMethod(quality.fit_method);
@@ -4608,6 +4684,7 @@ function renderLockedRunResults(run) {
   el.idealViscosity.textContent = "待人工测量";
   renderStandardViscosityRange(run, "locked");
   el.viscosity.textContent = "待人工测量";
+  if (el.transientViscosity) el.transientViscosity.textContent = "待人工测量";
   el.r2.textContent = "--";
   el.re.textContent = "--";
   el.fitMethod.textContent = "--";
@@ -5747,14 +5824,15 @@ function drawChart() {
   if (state.chartMode === "velocity") {
     const phaseSummary = estimateMotionPhases(state.latest);
     const phaseStyles = {
-      acceleration: { color: "rgba(197, 128, 39, 0.13)", text: "#8a5a1e" },
-      uniform: { color: "rgba(50, 122, 102, 0.13)", text: "#235b4c" },
-      deceleration: { color: "rgba(166, 66, 66, 0.11)", text: "#8d3737" },
+      accelerating: { color: "rgba(197, 128, 39, 0.14)", text: "#8a5a1e" },
+      decelerating: { color: "rgba(166, 66, 66, 0.12)", text: "#8d3737" },
+      stable: { color: "rgba(50, 122, 102, 0.13)", text: "#235b4c" },
+      transition: { color: "rgba(82, 101, 118, 0.10)", text: "#4d6172" },
     };
     if (phaseSummary?.phases?.length) {
       ctx.save();
       phaseSummary.phases.forEach((phase) => {
-        const style = phaseStyles[phase.key];
+        const style = phaseStyles[phase.trend] || phaseStyles.transition;
         if (!style) return;
         const startX = x(Math.max(0, Math.min(maxT, phase.startTime)));
         const endX = x(Math.max(0, Math.min(maxT, phase.endTime)));

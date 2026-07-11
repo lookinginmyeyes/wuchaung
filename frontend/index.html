@@ -773,19 +773,19 @@
                   </div>
                   <div class="motion-phase-grid">
                     <article>
-                      <span>加速段</span>
+                      <span id="motionEntryLabel">入液阶段</span>
                       <strong id="motionAccelLength">--</strong>
-                      <p>释放后速度上升区间</p>
+                      <p id="motionEntryDetail">自动识别加速或减速</p>
                     </article>
                     <article>
-                      <span>匀速段</span>
+                      <span id="motionUniformLabel">稳定平台段</span>
                       <strong id="motionUniformLength">--</strong>
-                      <p>平台用于拟合终端速度</p>
+                      <p id="motionUniformDetail">平台用于拟合终端速度</p>
                     </article>
                     <article>
-                      <span>减速段</span>
+                      <span id="motionTerminalLabel">末端阶段</span>
                       <strong id="motionDecelLength">--</strong>
-                      <p>末端扰动或靠近筒底区间</p>
+                      <p id="motionTerminalDetail">自动判断是否仍稳定</p>
                     </article>
                   </div>
                 </div>
@@ -867,6 +867,11 @@
                     <span>修正 η</span>
                     <strong id="viscosity">--</strong>
                     <small>壁效应 + Re二级修正</small>
+                  </article>
+                  <article class="metric">
+                    <span>瞬态 η</span>
+                    <strong id="transientViscosity">--</strong>
+                    <small>入液初段指数拟合</small>
                   </article>
                   <article class="metric">
                     <span>R²</span>
@@ -1461,6 +1466,6 @@
     </div>
 
     <div id="toast" class="toast"></div>
-    <script src="./app.js?v=phase-records-v129"></script>
+    <script src="./app.js?v=phase-transient-v130"></script>
   </body>
 </html>
