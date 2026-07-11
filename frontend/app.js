@@ -33,6 +33,7 @@ const state = {
   chartMode: "position",
   source: "realtime",
   videoUrl: null,
+  archivedVideoLoadTimer: null,
   liveStream: null,
   liveRecorder: null,
   liveChunks: [],
@@ -1927,6 +1928,7 @@ function updateFileQueue(name, status, detail) {
 }
 
 function resetVideoPreview() {
+  clearArchivedVideoLoadTimer();
   if (state.videoUrl) {
     URL.revokeObjectURL(state.videoUrl);
     state.videoUrl = null;
@@ -1946,6 +1948,7 @@ function resetVideoPreview() {
 
 function showRecordedVideo(run) {
   const video = run?.video;
+  clearArchivedVideoLoadTimer();
   if (!video?.url || !el.videoPreview) {
     if (state.source === "video") {
       el.videoReadinessLabel.textContent = "无历史录像";
@@ -1969,6 +1972,23 @@ function showRecordedVideo(run) {
   el.videoFps.textContent = "历史录像";
   el.videoReadinessLabel.textContent = "历史录像已载入";
   el.videoReadinessDetail.textContent = "可在此回放本次实验录像，并与右侧速度曲线、粘度结果和不确定度对照。";
+  state.archivedVideoLoadTimer = window.setTimeout(() => {
+    if (!el.videoPreview?.dataset.archiveRun) return;
+    if (el.videoPreview.readyState >= 1 || el.videoPreview.videoWidth) {
+      handleVideoMetadataLoaded();
+      return;
+    }
+    el.videoDuration.textContent = "--";
+    el.videoResolution.textContent = "--";
+    el.videoReadinessLabel.textContent = "录像读取超时";
+    el.videoReadinessDetail.textContent = "未能连接到历史录像文件。请确认服务器录像地址可访问，或重新载入这条记录。";
+  }, 8000);
+}
+
+function clearArchivedVideoLoadTimer() {
+  if (!state.archivedVideoLoadTimer) return;
+  window.clearTimeout(state.archivedVideoLoadTimer);
+  state.archivedVideoLoadTimer = null;
 }
 
 function updateLiveCalibrationStatus() {
@@ -3910,6 +3930,7 @@ function renderVideoInspection(result) {
 }
 
 function handleVideoMetadataLoaded() {
+  clearArchivedVideoLoadTimer();
   const duration = Number.isFinite(el.videoPreview.duration) ? el.videoPreview.duration : null;
   const width = el.videoPreview.videoWidth;
   const height = el.videoPreview.videoHeight;
@@ -6285,7 +6306,9 @@ function bind() {
   });
   el.trajectoryInput.addEventListener("change", updateSelectedFile);
   el.videoPreview.addEventListener("loadedmetadata", handleVideoMetadataLoaded);
+  el.videoPreview.addEventListener("canplay", handleVideoMetadataLoaded);
   el.videoPreview.addEventListener("error", () => {
+    clearArchivedVideoLoadTimer();
     el.videoReadinessLabel.textContent = "读取失败";
     el.videoReadinessDetail.textContent = "浏览器无法读取该视频，请更换 mp4、mov 或 webm。";
     const file = el.trajectoryInput.files?.[0];
