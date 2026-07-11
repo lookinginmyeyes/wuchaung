@@ -5755,7 +5755,6 @@ async function loadRun(id) {
   try {
     const run = await api(`/api/runs/${id}`);
     state.latest = run;
-    renderRun(run);
     if (run.video?.url) {
       showRecordedVideo(run);
     } else if (state.source === "video") {
@@ -5763,6 +5762,7 @@ async function loadRun(id) {
       el.videoReadinessLabel.textContent = "无历史录像";
       el.videoReadinessDetail.textContent = "这条记录没有保存摄像机视频，只能回看速度曲线、粘度结果和不确定度。";
     }
+    renderRun(run);
     switchView("workspace");
     showToast(`已载入记录 #${id}`);
   } catch (error) {
