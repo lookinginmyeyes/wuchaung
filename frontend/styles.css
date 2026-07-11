@@ -5297,7 +5297,7 @@ input[type="range"]:focus-visible {
 .algorithm-strip article {
   position: relative;
   min-width: 0;
-  min-height: 58px;
+  min-height: 86px;
   padding: 9px;
   border-radius: 12px;
   background: rgba(255, 255, 255, 0.86);
@@ -5319,6 +5319,18 @@ input[type="range"]:focus-visible {
   animation-delay: calc(var(--i, 0) * 180ms);
 }
 
+.algorithm-strip article[data-quality-level="ok"]::after {
+  background: linear-gradient(90deg, rgba(48, 128, 91, 0.18), rgba(48, 128, 91, 0.68));
+}
+
+.algorithm-strip article[data-quality-level="warn"]::after {
+  background: linear-gradient(90deg, rgba(178, 121, 42, 0.18), rgba(178, 121, 42, 0.72));
+}
+
+.algorithm-strip article[data-quality-level="danger"]::after {
+  background: linear-gradient(90deg, rgba(176, 65, 56, 0.18), rgba(176, 65, 56, 0.72));
+}
+
 .algorithm-strip span {
   display: block;
   margin-bottom: 5px;
@@ -5331,8 +5343,18 @@ input[type="range"]:focus-visible {
   display: block;
   overflow-wrap: anywhere;
   color: var(--accent-dark);
-  font-size: 14px;
+  font-size: 15px;
   line-height: 1.15;
+}
+
+.algorithm-strip small {
+  display: block;
+  margin-top: 6px;
+  padding-right: 2px;
+  color: rgba(75, 79, 70, 0.78);
+  font-size: 11px;
+  font-weight: 760;
+  line-height: 1.35;
 }
 
 .chart-tabs {

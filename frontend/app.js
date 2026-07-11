@@ -233,10 +233,15 @@ const el = {
   r2: document.getElementById("r2"),
   re: document.getElementById("re"),
   fitMethod: document.getElementById("fitMethod"),
+  fitMethodDetail: document.getElementById("fitMethodDetail"),
   outlierCount: document.getElementById("outlierCount"),
+  outlierDetail: document.getElementById("outlierDetail"),
   segmentCv: document.getElementById("segmentCv"),
+  segmentCvDetail: document.getElementById("segmentCvDetail"),
   trackingConfidence: document.getElementById("trackingConfidence"),
+  trackingConfidenceDetail: document.getElementById("trackingConfidenceDetail"),
   segmentSensitivity: document.getElementById("segmentSensitivity"),
+  segmentSensitivityDetail: document.getElementById("segmentSensitivityDetail"),
   accelerationSpanHint: document.getElementById("accelerationSpanHint"),
   motionPhaseStatus: document.getElementById("motionPhaseStatus"),
   motionEntryLabel: document.getElementById("motionEntryLabel"),
@@ -1506,6 +1511,112 @@ function estimateSegmentSensitivity(run, terminalVelocity) {
 function formatSegmentSensitivity(run, terminalVelocity) {
   const sensitivity = estimateSegmentSensitivity(run, terminalVelocity);
   return sensitivity ? formatPercent(sensitivity.relative) : "--";
+}
+
+function setQualityMetric(valueEl, detailEl, value, detail, level = "neutral") {
+  if (valueEl) {
+    valueEl.textContent = value;
+    valueEl.closest("article")?.setAttribute("data-quality-level", level);
+    valueEl.closest("article")?.setAttribute("title", detail || value);
+  }
+  if (detailEl) detailEl.textContent = detail || "";
+}
+
+function resetQualityMetrics() {
+  setQualityMetric(el.fitMethod, el.fitMethodDetail, "--", "等待速度拟合");
+  setQualityMetric(el.outlierCount, el.outlierDetail, "--", "等待轨迹预处理");
+  setQualityMetric(el.segmentCv, el.segmentCvDetail, "--", "越低越接近匀速");
+  setQualityMetric(el.trackingConfidence, el.trackingConfidenceDetail, "--", "小球识别越稳越高");
+  setQualityMetric(el.segmentSensitivity, el.segmentSensitivityDetail, "--", "换相邻平台段后 vt 的变化");
+}
+
+function formatFitQuality(method) {
+  const formatted = formatFitMethod(method);
+  if (!method) return { value: "--", detail: "等待速度拟合", level: "neutral" };
+  if (String(method).includes("huber")) {
+    return { value: "稳健直线", detail: "用 s-t 直线拟合终端速度，异常点影响较小", level: "ok" };
+  }
+  if (String(method).includes("linear")) {
+    return { value: "直线拟合", detail: "用位移-时间斜率得到终端速度", level: "ok" };
+  }
+  if (String(method).includes("preview")) {
+    return { value: "实时预览", detail: "正在采样，最终结果需停止后重新拟合", level: "neutral" };
+  }
+  return { value: formatted, detail: "当前速度来源", level: "neutral" };
+}
+
+function formatOutlierQuality(count, total) {
+  const safeCount = Math.max(0, Number(count) || 0);
+  const safeTotal = Math.max(0, Number(total) || 0);
+  const ratio = safeTotal ? safeCount / safeTotal : 0;
+  if (!safeCount) {
+    return { value: "0 个 干净", detail: "没有发现明显跳点或误识别点", level: "ok" };
+  }
+  const level = ratio > 0.08 || safeCount >= 6 ? "danger" : ratio > 0.03 || safeCount >= 3 ? "warn" : "ok";
+  const label = level === "danger" ? "需复核" : level === "warn" ? "已降权" : "影响小";
+  return {
+    value: `${safeCount} 个 ${label}`,
+    detail: `疑似误识别点已降低权重，占轨迹约 ${formatPercent(ratio)}`,
+    level,
+  };
+}
+
+function formatPlatformQuality(cv) {
+  const parsed = finiteNumber(cv);
+  if (parsed === null) return { value: "--", detail: "越低越接近匀速", level: "neutral" };
+  const level = parsed > 0.12 ? "danger" : parsed > 0.06 ? "warn" : "ok";
+  const label = level === "danger" ? "波动大" : level === "warn" ? "略抖" : "很平";
+  return {
+    value: `${formatPercent(parsed)} ${label}`,
+    detail: "选中平台段内速度的相对波动，越低越像匀速",
+    level,
+  };
+}
+
+function formatTrackingQuality(confidence) {
+  const parsed = finiteNumber(confidence);
+  if (parsed === null) return { value: "--", detail: "小球识别越稳越高", level: "neutral" };
+  const level = parsed < 0.68 ? "danger" : parsed < 0.78 ? "warn" : "ok";
+  const label = level === "danger" ? "需重测" : level === "warn" ? "可用" : "稳定";
+  return {
+    value: `${Math.round(parsed * 100)}% ${label}`,
+    detail: "综合小球轮廓清晰度、误检和轨迹连续性",
+    level,
+  };
+}
+
+function formatSegmentSensitivityQuality(run, terminalVelocity) {
+  const sensitivity = estimateSegmentSensitivity(run, terminalVelocity);
+  if (!sensitivity) return { value: "--", detail: "换相邻平台段后 vt 的变化", level: "neutral" };
+  const relative = finiteNumber(sensitivity.relative);
+  if (relative === null) return { value: "--", detail: "换相邻平台段后 vt 的变化", level: "neutral" };
+  const level = relative > 0.08 ? "danger" : relative > 0.04 ? "warn" : "ok";
+  const label = level === "danger" ? "偏高" : level === "warn" ? "中等" : "很低";
+  return {
+    value: `${formatPercent(relative)} ${label}`,
+    detail: "把平台段前/中/后分开估算，差得越小选段越可靠",
+    level,
+  };
+}
+
+function renderQualityMetrics(run, mode = "empty") {
+  if (!run || mode === "empty" || mode === "locked") {
+    resetQualityMetrics();
+    return;
+  }
+  const result = run.result || {};
+  const quality = run.quality || {};
+  const preprocessing = quality.preprocessing || {};
+  const fit = formatFitQuality(quality.fit_method);
+  const outliers = formatOutlierQuality(preprocessing.outlier_points, run.frames?.length);
+  const platform = formatPlatformQuality(quality.uniform_segment_cv);
+  const tracking = formatTrackingQuality(result.tracking_confidence);
+  const sensitivity = formatSegmentSensitivityQuality(run, result.terminal_velocity);
+  setQualityMetric(el.fitMethod, el.fitMethodDetail, fit.value, fit.detail, fit.level);
+  setQualityMetric(el.outlierCount, el.outlierDetail, outliers.value, outliers.detail, outliers.level);
+  setQualityMetric(el.segmentCv, el.segmentCvDetail, platform.value, platform.detail, platform.level);
+  setQualityMetric(el.trackingConfidence, el.trackingConfidenceDetail, tracking.value, tracking.detail, tracking.level);
+  setQualityMetric(el.segmentSensitivity, el.segmentSensitivityDetail, sensitivity.value, sensitivity.detail, sensitivity.level);
 }
 
 function formatUniformSegmentLength(span) {
@@ -3588,13 +3699,15 @@ function renderLiveTrackingPreview() {
   el.viscosity.textContent = "--";
   el.r2.textContent = "--";
   el.re.textContent = "--";
-  el.fitMethod.textContent = "实时预览";
-  el.outlierCount.textContent = "0";
-  el.segmentCv.textContent = "--";
-  el.trackingConfidence.textContent = state.liveTrajectory.length
-    ? `${Math.round((state.liveTrajectory.reduce((sum, point) => sum + point.confidence, 0) / state.liveTrajectory.length) * 100)}%`
-    : "--";
-  if (el.segmentSensitivity) el.segmentSensitivity.textContent = "--";
+  const liveConfidence = state.liveTrajectory.length
+    ? state.liveTrajectory.reduce((sum, point) => sum + point.confidence, 0) / state.liveTrajectory.length
+    : null;
+  const tracking = formatTrackingQuality(liveConfidence);
+  setQualityMetric(el.fitMethod, el.fitMethodDetail, "实时预览", "正在采样，停止后才会生成最终拟合", "neutral");
+  setQualityMetric(el.outlierCount, el.outlierDetail, "0 个", "实时阶段暂不做完整预处理", "neutral");
+  setQualityMetric(el.segmentCv, el.segmentCvDetail, "--", "停止并计算后判断平台是否够平", "neutral");
+  setQualityMetric(el.trackingConfidence, el.trackingConfidenceDetail, tracking.value, tracking.detail, tracking.level);
+  setQualityMetric(el.segmentSensitivity, el.segmentSensitivityDetail, "--", "停止并计算后判断换段影响", "neutral");
   renderMotionPhaseCard(run, "empty");
   el.score.textContent = "--";
   if (el.scoreReportBtn) el.scoreReportBtn.disabled = true;
@@ -3966,11 +4079,7 @@ function renderEmptyState() {
   el.viscosity.textContent = "--";
   el.r2.textContent = "--";
   el.re.textContent = "--";
-  el.fitMethod.textContent = "--";
-  el.outlierCount.textContent = "--";
-  el.segmentCv.textContent = "--";
-  el.trackingConfidence.textContent = "--";
-  if (el.segmentSensitivity) el.segmentSensitivity.textContent = "--";
+  resetQualityMetrics();
   el.score.textContent = "--";
   if (el.scoreReportBtn) el.scoreReportBtn.disabled = true;
   el.runBadge.textContent = "等待数据";
@@ -4659,15 +4768,7 @@ function renderRun(run) {
   el.viscosity.textContent = `${formatPaS(result.viscosity)} Pa·s`;
   el.r2.textContent = result.r2.toFixed(3);
   el.re.textContent = result.re.toFixed(3);
-  el.fitMethod.textContent = formatFitMethod(quality.fit_method);
-  el.outlierCount.textContent = `${preprocessing.outlier_points ?? 0}`;
-  el.segmentCv.textContent = Number.isFinite(Number(quality.uniform_segment_cv))
-    ? Number(quality.uniform_segment_cv).toFixed(3)
-    : "--";
-  el.trackingConfidence.textContent = Number.isFinite(Number(result.tracking_confidence))
-    ? `${Math.round(Number(result.tracking_confidence) * 100)}%`
-    : "--";
-  if (el.segmentSensitivity) el.segmentSensitivity.textContent = formatSegmentSensitivity(run, result.terminal_velocity);
+  renderQualityMetrics(run);
   renderMotionPhaseCard(run);
   el.score.textContent = formatScore(student.score);
   if (run.id) {
@@ -4693,11 +4794,7 @@ function renderLockedRunResults(run) {
   el.viscosity.textContent = "待人工测量";
   el.r2.textContent = "--";
   el.re.textContent = "--";
-  el.fitMethod.textContent = "--";
-  el.outlierCount.textContent = "--";
-  el.segmentCv.textContent = "--";
-  el.trackingConfidence.textContent = "--";
-  if (el.segmentSensitivity) el.segmentSensitivity.textContent = "--";
+  resetQualityMetrics();
   renderMotionPhaseCard(run, "locked");
   el.score.textContent = "待评分";
   el.downloadReport.href = "#";

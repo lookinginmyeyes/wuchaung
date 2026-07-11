@@ -426,7 +426,10 @@ class PlatformHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
-        self.wfile.write(body)
+        try:
+            self.wfile.write(body)
+        except (BrokenPipeError, ConnectionResetError):
+            return
 
     def log_message(self, fmt: str, *args) -> None:
         print(f"[server] {self.address_string()} {fmt % args}")
