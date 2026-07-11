@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>落球法测液体粘滞系数实验 AI 学习平台</title>
     <link rel="icon" href="./assets/generated/icons/calibration.png" />
-    <link rel="stylesheet" href="./styles.css?v=sim-layout-quality-v136" />
+    <link rel="stylesheet" href="./styles.css?v=uncertainty-ai-term-v137" />
   </head>
   <body data-source="realtime">
     <div class="app-shell">
@@ -826,34 +826,6 @@
               <span id="runBadge" class="badge">等待运行</span>
             </div>
 
-            <div class="algorithm-strip quality-strip" aria-label="实验质量直读指标">
-              <article style="--i:0" data-quality-level="neutral">
-                <span>速度来源</span>
-                <strong id="fitMethod">--</strong>
-                <small id="fitMethodDetail">等待速度拟合</small>
-              </article>
-              <article style="--i:1" data-quality-level="neutral">
-                <span>异常点处理</span>
-                <strong id="outlierCount">--</strong>
-                <small id="outlierDetail">等待轨迹预处理</small>
-              </article>
-              <article style="--i:2" data-quality-level="neutral">
-                <span>平台平稳程度</span>
-                <strong id="segmentCv">--</strong>
-                <small id="segmentCvDetail">越低越接近匀速</small>
-              </article>
-              <article style="--i:3" data-quality-level="neutral">
-                <span>识别稳定度</span>
-                <strong id="trackingConfidence">--</strong>
-                <small id="trackingConfidenceDetail">小球识别越稳越高</small>
-              </article>
-              <article style="--i:4" data-quality-level="neutral">
-                <span>换段影响</span>
-                <strong id="segmentSensitivity">--</strong>
-                <small id="segmentSensitivityDetail">换相邻平台段后 vt 的变化</small>
-              </article>
-            </div>
-
             <section class="chart-area" aria-label="测量曲线区">
               <div class="chart-tabs">
                 <button class="active" data-chart="position" type="button">
@@ -992,10 +964,14 @@
                       </span>
                       ΔH<span class="paren">)</span><sup>2</sup>
                     </span>
+                    <span class="op">+</span>
+                    <span class="term ai-term">
+                      <span class="paren">(</span>u<sub>AI</sub><span class="paren">)</span><sup>2</sup>
+                    </span>
                   </span>
                 </span>
               </div>
-              <small>采用文献中的相对不确定度传播式；本平台由小球半径自动换算 d=2r。</small>
+              <small>采用文献中的相对不确定度传播式，并把 AI 标定项并入根号：u<sub>AI</sub> 由标定、离焦和选段影响合成；d=2r。</small>
             </div>
             <div class="uncertainty-input-grid">
               <label>
@@ -1033,7 +1009,7 @@
               <span>H 液体深度</span>
               <span>l 匀速段距离</span>
               <span>t 匀速段时间</span>
-              <span>AI项 标定/离焦/选段</span>
+              <span>uAI 标定/离焦/选段</span>
             </div>
             <div class="uncertainty-results">
               <article>
@@ -1466,6 +1442,6 @@
     </div>
 
     <div id="toast" class="toast"></div>
-    <script src="./app.js?v=sim-layout-quality-v136"></script>
+    <script src="./app.js?v=uncertainty-ai-term-v137"></script>
   </body>
 </html>

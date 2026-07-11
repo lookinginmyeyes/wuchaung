@@ -5088,6 +5088,7 @@ input[type="range"]:focus-visible {
   border-radius: 12px;
   background: rgba(255, 255, 255, 0.78);
   border: 1px solid rgba(217, 221, 213, 0.78);
+  overflow: hidden;
 }
 
 .uncertainty-formula b,
@@ -5102,13 +5103,18 @@ input[type="range"]:focus-visible {
 .math-formula {
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 8px;
   color: var(--accent-dark);
   font-family: var(--mono);
-  font-size: 12px;
+  font-size: clamp(10px, 0.72vw, 12px);
   font-weight: 900;
   line-height: 1.45;
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding-bottom: 4px;
+  scrollbar-width: thin;
 }
 
 .math-left,
@@ -5134,7 +5140,7 @@ input[type="range"]:focus-visible {
   display: inline-flex;
   align-items: stretch;
   min-width: 0;
-  flex: 1 1 100%;
+  flex: 0 0 auto;
 }
 
 .radical-symbol {
@@ -5148,7 +5154,7 @@ input[type="range"]:focus-visible {
 .radical-body {
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 7px;
   min-width: 0;
   padding: 8px 0 0 8px;
@@ -5185,6 +5191,14 @@ input[type="range"]:focus-visible {
 .term sup,
 .math-formula sub {
   font-size: 0.72em;
+}
+
+.ai-term {
+  padding: 2px 7px;
+  border-radius: 999px;
+  color: #245c4d;
+  background: rgba(50, 122, 102, 0.1);
+  border: 1px solid rgba(50, 122, 102, 0.18);
 }
 
 .uncertainty-formula code {
