@@ -298,7 +298,7 @@ def find_uniform_segment(velocities: list[dict]) -> dict:
     for window_size in window_sizes:
         for start in range(int(n * 0.16), n - window_size):
             selected_points = velocities[start : start + window_size]
-            selected = [point["v"] for point in selected_points]
+            selected = [point.get("v_segment", point["v"]) for point in selected_points]
             valid_conf = [point.get("confidence", 1.0) for point in selected_points]
             avg_conf = mean(valid_conf) if valid_conf else 1.0
             avg = mean(selected)
@@ -307,7 +307,7 @@ def find_uniform_segment(velocities: list[dict]) -> dict:
             sigma = robust_sigma(selected)
             cv = sigma / avg if avg else 0
             fit = weighted_linear_fit(
-                [{"x": point["t"], "y": point["v"], "weight": point.get("confidence", 1.0)} for point in selected_points]
+                [{"x": point["t"], "y": point.get("v_segment", point["v"]), "weight": point.get("confidence", 1.0)} for point in selected_points]
             )
             slope_penalty = abs(fit["slope"]) / avg
             center_ratio = (start + window_size / 2) / max(1, n)
@@ -462,6 +462,8 @@ def fit_transient_viscosity(params: MeasurementParams, velocities: list[dict], s
     n = len(velocities)
     if n < 12:
         return {"available": False, "reason": "速度点不足，无法进行入液瞬态拟合。"}
+    if terminal_velocity <= 0:
+        return {"available": False, "reason": "缺少可靠终端速度，无法约束瞬态模型。"}
     uniform_start = max(0, min(int(segment.get("start", 0)), n - 1))
     transient_end = uniform_start if uniform_start >= 8 else max(8, int(n * 0.36))
     transient_end = max(8, min(transient_end, n - 2))
@@ -474,30 +476,42 @@ def fit_transient_viscosity(params: MeasurementParams, velocities: list[dict], s
     duration = shifted[-1]["x"] - shifted[0]["x"]
     if duration <= 0.04:
         return {"available": False, "reason": "入液初段时间跨度过短。"}
+    sample_steps = [points[index]["t"] - points[index - 1]["t"] for index in range(1, len(points)) if points[index]["t"] > points[index - 1]["t"]]
+    median_step = median(sample_steps) if sample_steps else duration / max(1, len(points) - 1)
 
     tau_min = max(0.006, duration / 90)
-    tau_max = max(tau_min * 4, duration * 6)
+    tau_max = max(tau_min * 4, duration * 2.5)
     best = None
     for index in range(96):
         ratio = index / 95
         tau = tau_min * ((tau_max / tau_min) ** ratio)
-        transformed = [
-            {
-                "x": math.exp(-point["x"] / tau),
-                "y": point["y"],
-                "weight": point.get("confidence", 1.0),
-            }
+        exponentials = [math.exp(-point["x"] / tau) for point in shifted]
+        denom = sum(max(0.001, point.get("confidence", 1.0)) * exp_value * exp_value for point, exp_value in zip(shifted, exponentials))
+        if denom <= 1e-15:
+            continue
+        amplitude = sum(
+            max(0.001, point.get("confidence", 1.0)) * exp_value * (point["y"] - terminal_velocity)
+            for point, exp_value in zip(shifted, exponentials)
+        ) / denom
+        predicted = [terminal_velocity + amplitude * exp_value for exp_value in exponentials]
+        weights = [max(0.001, point.get("confidence", 1.0)) for point in shifted]
+        y_mean = sum(weight * point["y"] for point, weight in zip(shifted, weights)) / max(0.001, sum(weights))
+        ss_res = sum(weight * (point["y"] - pred) ** 2 for point, pred, weight in zip(shifted, predicted, weights))
+        ss_tot = sum(weight * (point["y"] - y_mean) ** 2 for point, weight in zip(shifted, weights))
+        r2 = 1.0 if ss_tot <= 1e-15 else max(0.0, min(1.0, 1 - ss_res / ss_tot))
+        rmse = math.sqrt(ss_res / max(1, len(shifted) - 1))
+        v0 = terminal_velocity + amplitude
+        if v0 <= 0:
+            continue
+        signs = [
+            1 if point["y"] - terminal_velocity > 0 else -1 if point["y"] - terminal_velocity < 0 else 0
             for point in shifted
         ]
-        fit = weighted_linear_fit(transformed)
-        v_inf = fit["intercept"]
-        v0 = fit["intercept"] + fit["slope"]
-        if v_inf <= 0 or v0 <= 0:
-            continue
-        plausibility = abs(math.log(max(v_inf, 1e-9) / max(terminal_velocity, 1e-9)))
-        score = fit["rmse"] / max(abs(v_inf), 1e-6) + 0.08 * plausibility + max(0.0, 0.35 - fit["r2"]) * 0.35
+        expected_sign = 1 if amplitude > 0 else -1 if amplitude < 0 else 0
+        sign_match = sum(1 for sign in signs if sign == expected_sign or sign == 0) / max(1, len(signs))
+        score = rmse / max(abs(terminal_velocity), 1e-6) + max(0.0, 0.72 - r2) * 0.55 + max(0.0, 0.72 - sign_match) * 0.35
         if best is None or score < best["score"]:
-            best = {"tau": tau, "fit": fit, "v_inf": v_inf, "v0": v0, "score": score}
+            best = {"tau": tau, "r2": r2, "rmse": rmse, "v_inf": terminal_velocity, "v0": v0, "amplitude": amplitude, "sign_match": sign_match, "score": score}
 
     if not best:
         return {"available": False, "reason": "入液瞬态曲线无法稳定拟合。"}
@@ -506,12 +520,20 @@ def fit_transient_viscosity(params: MeasurementParams, velocities: list[dict], s
     tube_radius_m = params.tube_diameter_mm / 2000
     liquid_depth_m = params.liquid_depth_mm / 1000
     effective_density = params.rho_ball + 0.5 * params.rho_liquid
+    steady = viscosity_from_terminal_velocity(params, terminal_velocity)
+    steady_eta = steady["viscosity"]
+    expected_tau = 2 * radius_m * radius_m * effective_density / (9 * max(steady_eta * max(steady.get("correction_total", 1.0), 1e-9), 1e-9))
+    if expected_tau < median_step * 1.8:
+        return {"available": False, "reason": "当前帧率不足以分辨入液瞬态时间常数。"}
     base_eta = 2 * radius_m * radius_m * effective_density / (9 * best["tau"])
     eta = base_eta
     for _ in range(6):
         factors = correction_factors(radius_m, tube_radius_m, liquid_depth_m, params.rho_liquid, max(best["v_inf"], 1e-9), eta)
         eta = max(base_eta / factors["correction_total"], 1e-9)
     factors = correction_factors(radius_m, tube_radius_m, liquid_depth_m, params.rho_liquid, max(best["v_inf"], 1e-9), eta)
+    eta_ratio = eta / max(steady_eta, 1e-12)
+    if best["r2"] < 0.78 or best["sign_match"] < 0.72 or eta_ratio < 0.45 or eta_ratio > 2.2:
+        return {"available": False, "reason": "入液瞬态拟合与终端速度法不一致，结果不采用。"}
     direction = "加速入液" if best["v0"] < best["v_inf"] else "减速入液"
     return {
         "available": True,
@@ -522,11 +544,12 @@ def fit_transient_viscosity(params: MeasurementParams, velocities: list[dict], s
         "v_inf": best["v_inf"],
         "viscosity": eta,
         "ideal_viscosity": base_eta,
-        "r2": best["fit"]["r2"],
-        "rmse": best["fit"]["rmse"],
+        "r2": best["r2"],
+        "rmse": best["rmse"],
         "point_count": len(points),
         "start_time": points[0]["t"],
         "end_time": points[-1]["t"],
+        "eta_ratio_to_terminal": eta_ratio,
         "wall_correction": factors["wall_correction"],
         "reynolds_correction": factors["reynolds_correction"],
         "correction_total": factors["correction_total"],
@@ -590,19 +613,59 @@ def estimate_velocity(frames: list[dict]) -> list[dict]:
         return []
     y_values = [frame["corrected_y"] for frame in frames]
     smooth_y = moving_average(median_filter(y_values, 1), 2)
+    dt_values = [frames[index]["t"] - frames[index - 1]["t"] for index in range(1, len(frames)) if frames[index]["t"] > frames[index - 1]["t"]]
+    median_dt = median(dt_values) if dt_values else 0.02
+    max_span = max(2, min(24, len(frames) // 3))
+    medium_span = max(2, min(max_span, int(round(0.10 / max(median_dt, 1e-4)))))
+    long_span = max(medium_span, min(max_span, int(round(0.16 / max(median_dt, 1e-4)))))
+
+    def span_velocity(frame_index: int, span: int) -> tuple[float | None, float]:
+        half = max(1, span // 2)
+        left = max(0, frame_index - half)
+        right = min(len(frames) - 1, frame_index + max(1, span - half))
+        if right <= left:
+            return None, 0.0
+        dt = frames[right]["t"] - frames[left]["t"]
+        if dt <= 0:
+            return None, 0.0
+        return (smooth_y[right] - smooth_y[left]) / dt, dt
+
     raw_v = []
     for index in range(1, len(smooth_y)):
         dt = frames[index]["t"] - frames[index - 1]["t"]
         if dt <= 0:
             continue
         confidence = min(frames[index]["confidence"], frames[index - 1]["confidence"])
-        raw_v.append({"t": frames[index]["t"], "v": (smooth_y[index] - smooth_y[index - 1]) / dt, "confidence": confidence})
+        medium_v, medium_dt = span_velocity(index, medium_span)
+        segment_v, segment_dt = span_velocity(index, long_span)
+        raw_v.append(
+            {
+                "t": frames[index]["t"],
+                "v": (smooth_y[index] - smooth_y[index - 1]) / dt,
+                "v_medium": medium_v,
+                "v_segment": segment_v,
+                "span_s": segment_dt or medium_dt or dt,
+                "confidence": confidence,
+            }
+        )
     v_values = [point["v"] for point in raw_v]
     smooth_v = moving_average(median_filter(v_values, 1), 3)
-    return [
-        {"t": point["t"], "v": value, "confidence": point["confidence"]}
-        for point, value in zip(raw_v, smooth_v)
-    ]
+    velocity_points = []
+    for point, short_v in zip(raw_v, smooth_v):
+        medium_v = point["v_medium"] if point["v_medium"] is not None else short_v
+        segment_v = point["v_segment"] if point["v_segment"] is not None else medium_v
+        display_v = 0.35 * short_v + 0.65 * medium_v
+        velocity_points.append(
+            {
+                "t": point["t"],
+                "v": display_v,
+                "v_instant": short_v,
+                "v_segment": segment_v,
+                "span_s": point["span_s"],
+                "confidence": point["confidence"],
+            }
+        )
+    return velocity_points
 
 
 def build_frames_from_trajectory(trajectory: list[dict]) -> list[dict]:

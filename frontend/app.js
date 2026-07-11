@@ -229,7 +229,6 @@ const el = {
   standardViscosityRange: document.getElementById("standardViscosityRange"),
   standardViscosityNote: document.getElementById("standardViscosityNote"),
   viscosity: document.getElementById("viscosity"),
-  transientViscosity: document.getElementById("transientViscosity"),
   r2: document.getElementById("r2"),
   re: document.getElementById("re"),
   fitMethod: document.getElementById("fitMethod"),
@@ -1164,16 +1163,6 @@ function formatPaS(value) {
   if (absolute >= 0.01) return parsed.toFixed(4);
   if (absolute >= 0.0001) return parsed.toFixed(6);
   return parsed.toExponential(2);
-}
-
-function formatTransientViscosity(run) {
-  const transient = run?.result?.transient || {};
-  if (!transient.available) return "--";
-  const eta = finiteNumber(transient.viscosity);
-  if (eta === null) return "--";
-  const r2 = finiteNumber(transient.r2);
-  if (r2 !== null && r2 < 0.6) return "拟合不足";
-  return `${formatPaS(eta)} Pa·s`;
 }
 
 function formatViscosityRange(lower, upper) {
@@ -3577,7 +3566,6 @@ function renderLiveTrackingPreview() {
   el.idealViscosity.textContent = "--";
   renderStandardViscosityRange(run, "empty");
   el.viscosity.textContent = "--";
-  if (el.transientViscosity) el.transientViscosity.textContent = "--";
   el.r2.textContent = "--";
   el.re.textContent = "--";
   el.fitMethod.textContent = "实时预览";
@@ -3955,7 +3943,6 @@ function renderEmptyState() {
   el.idealViscosity.textContent = "--";
   renderStandardViscosityRange(null, "empty");
   el.viscosity.textContent = "--";
-  if (el.transientViscosity) el.transientViscosity.textContent = "--";
   el.r2.textContent = "--";
   el.re.textContent = "--";
   el.fitMethod.textContent = "--";
@@ -4649,7 +4636,6 @@ function renderRun(run) {
   el.idealViscosity.textContent = idealEta === null ? "--" : `${formatPaS(idealEta)} Pa·s`;
   renderStandardViscosityRange(run);
   el.viscosity.textContent = `${formatPaS(result.viscosity)} Pa·s`;
-  if (el.transientViscosity) el.transientViscosity.textContent = formatTransientViscosity(run);
   el.r2.textContent = result.r2.toFixed(3);
   el.re.textContent = result.re.toFixed(3);
   el.fitMethod.textContent = formatFitMethod(quality.fit_method);
@@ -4684,7 +4670,6 @@ function renderLockedRunResults(run) {
   el.idealViscosity.textContent = "待人工测量";
   renderStandardViscosityRange(run, "locked");
   el.viscosity.textContent = "待人工测量";
-  if (el.transientViscosity) el.transientViscosity.textContent = "待人工测量";
   el.r2.textContent = "--";
   el.re.textContent = "--";
   el.fitMethod.textContent = "--";
