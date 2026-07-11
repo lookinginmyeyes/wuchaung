@@ -3095,11 +3095,9 @@ input[type="range"]:focus-visible {
 }
 
 .simulation-layout {
-  grid-template-columns: minmax(330px, 0.42fr) minmax(0, 1fr);
-  grid-template-areas:
-    "sim-controls sim-scene"
-    "sim-feedback sim-scene";
-  gap: clamp(14px, 1.4vw, 20px);
+  grid-template-columns: minmax(270px, 0.34fr) minmax(520px, 1fr) minmax(280px, 0.36fr);
+  grid-template-areas: "sim-controls sim-scene sim-feedback";
+  gap: clamp(14px, 1.4vw, 22px);
   align-items: start;
 }
 
@@ -4568,10 +4566,33 @@ input[type="range"]:focus-visible {
   min-height: 46px;
 }
 
+.simulation-control-panel,
+.simulation-feedback-panel,
+.simulation-scene-panel {
+  min-width: 0;
+}
+
+.simulation-control-panel,
+.simulation-feedback-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.simulation-control-panel .section-title {
+  display: block;
+}
+
+.simulation-control-panel .section-title h2 {
+  font-size: clamp(18px, 1.35vw, 22px);
+  line-height: 1.14;
+  white-space: nowrap;
+}
+
 .simulation-advice-head {
   display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 12px;
+  grid-template-columns: minmax(104px, 1fr) minmax(132px, 0.36fr);
+  gap: 14px;
   align-items: start;
 }
 
@@ -4588,13 +4609,11 @@ input[type="range"]:focus-visible {
 }
 
 .simulation-run-module {
-  justify-self: stretch;
+  justify-self: end;
   display: grid;
   align-content: start;
   gap: 6px;
   width: 100%;
-  max-width: 100%;
-  box-sizing: border-box;
   min-height: 96px;
   padding: 12px;
   border-radius: 14px;
@@ -4620,12 +4639,10 @@ input[type="range"]:focus-visible {
 }
 
 .simulation-run-module strong {
-  min-width: 0;
   color: var(--accent-dark);
-  font-size: clamp(16px, 1.35vw, 18px);
+  font-size: 18px;
   font-weight: 950;
   line-height: 1.1;
-  overflow-wrap: anywhere;
 }
 
 .simulation-run-module small {
@@ -4670,55 +4687,16 @@ input[type="range"]:focus-visible {
 
 #simulationCanvas {
   width: 100%;
-  margin-top: 12px;
-  aspect-ratio: 1.86 / 1;
-  border-radius: 18px;
+  margin-top: 14px;
+  aspect-ratio: 1.61 / 1;
+  border-radius: 16px;
   border: 1px solid rgba(217, 221, 213, 0.92);
   background: #fbfcfa;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9);
 }
 
-.simulation-chart-tabs {
-  margin-top: 0;
-  justify-content: flex-start;
-}
-
-.simulation-chart-tabs button {
-  min-height: 38px;
-  padding: 8px 14px;
-}
-
-.simulation-result-ribbon {
-  display: grid;
-  grid-template-columns: repeat(7, minmax(0, 1fr));
-  gap: 8px;
-  margin-top: 10px;
-  padding: 8px;
-  border: 1px solid rgba(217, 221, 213, 0.9);
-  border-radius: 16px;
-  background: rgba(247, 249, 246, 0.78);
-}
-
-.simulation-result-ribbon .metric {
-  min-height: 70px;
-  padding: 10px;
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.86);
-}
-
-.simulation-result-ribbon .metric::after {
-  display: none;
-}
-
-.simulation-result-ribbon .metric span {
-  margin-bottom: 7px;
-  font-size: 11px;
-}
-
-.simulation-result-ribbon .metric strong {
-  margin-bottom: 0;
-  font-size: clamp(14px, 1.08vw, 19px);
-  line-height: 1.15;
+.simulation-metrics .metric strong {
+  font-size: clamp(18px, 1.45vw, 25px);
 }
 
 .simulation-advice-list {
@@ -4830,7 +4808,7 @@ input[type="range"]:focus-visible {
 
 @media (max-width: 1240px) {
   .simulation-layout {
-    grid-template-columns: minmax(320px, 0.42fr) minmax(0, 1fr);
+    grid-template-columns: minmax(260px, 0.38fr) minmax(0, 1fr);
     grid-template-areas:
       "sim-controls sim-scene"
       "sim-feedback sim-scene";
@@ -4854,8 +4832,8 @@ input[type="range"]:focus-visible {
     grid-template-columns: 1fr;
     grid-template-areas:
       "sim-controls"
-      "sim-scene"
-      "sim-feedback";
+      "sim-feedback"
+      "sim-scene";
     gap: 14px;
   }
 
@@ -4871,13 +4849,13 @@ input[type="range"]:focus-visible {
     border-radius: 14px;
   }
 
-  .simulation-result-ribbon {
+  .simulation-metrics {
     grid-template-columns: 1fr;
     gap: 9px;
     margin-top: 12px;
   }
 
-  .simulation-result-ribbon .metric {
+  .simulation-metrics .metric {
     min-height: 86px;
     padding: 13px;
   }
@@ -4892,8 +4870,8 @@ input[type="range"]:focus-visible {
   }
 
   .simulation-run-module {
-    grid-template-columns: 1fr;
-    align-items: start;
+    grid-template-columns: minmax(92px, auto) minmax(0, 1fr) auto;
+    align-items: center;
     justify-self: stretch;
     min-height: 0;
     padding: 10px;
@@ -7764,21 +7742,6 @@ svg {
     min-height: 260px;
   }
 
-  .simulation-layout {
-    grid-template-columns: minmax(320px, 0.42fr) minmax(0, 1fr);
-    grid-template-areas:
-      "sim-controls sim-scene"
-      "sim-feedback sim-scene";
-  }
-
-  .simulation-advice-head {
-    grid-template-columns: 1fr;
-  }
-
-  .simulation-run-module {
-    justify-self: stretch;
-    min-height: 76px;
-  }
 }
 
 @media (max-width: 1120px) {
@@ -7844,16 +7807,11 @@ svg {
     grid-template-columns: 1fr;
     grid-template-areas:
       "sim-controls"
-      "sim-scene"
-      "sim-feedback";
+      "sim-feedback"
+      "sim-scene";
   }
 
-  .simulation-setup-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .simulation-setup-header h2,
-  .simulation-scene-head h2,
+  .simulation-control-panel .section-title h2,
   .simulation-advice-title h2 {
     white-space: normal;
   }
@@ -7862,7 +7820,7 @@ svg {
     aspect-ratio: 1.45 / 1;
   }
 
-  .simulation-result-ribbon {
+  .simulation-metrics {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
@@ -7915,7 +7873,7 @@ svg {
   .vision-quality-grid,
   .motion-phase-grid,
   .records-summary,
-  .simulation-result-ribbon,
+  .simulation-metrics,
   .detail-grid,
   .roadmap-grid,
   .video-pipeline-list,
@@ -7933,8 +7891,6 @@ svg {
     width: 100%;
   }
 
-  .simulation-setup-header,
-  .simulation-scene-head,
   .simulation-action-row {
     display: grid;
     grid-template-columns: 1fr;
