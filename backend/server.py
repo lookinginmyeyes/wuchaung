@@ -8,18 +8,40 @@ from urllib.parse import parse_qs, unquote, urlparse
 
 try:
     from .modules import module_summary, readiness_summary
-    from .physics import analyze_trajectory, answer_question, build_diagnostics, build_params, build_simulation, inspect_video_metadata, to_optional_float
+    from .physics import analyze_frames, analyze_trajectory, answer_question, build_diagnostics, build_params, build_simulation, inspect_video_metadata, to_optional_float
     from .storage import VIDEO_DIR, build_report_text, delete_run, delete_runs, get_run, init_db, latest_run, list_runs, read_remote_video_asset, read_supabase_video_asset, save_run, save_run_video, storage_status, update_run_payload, use_supabase_storage
     from .vision import build_video_track_config, detect_ball_from_image_bytes, extract_trajectory_from_video_bytes, inspect_vision_runtime
 except ImportError:
     from modules import module_summary, readiness_summary
-    from physics import analyze_trajectory, answer_question, build_diagnostics, build_params, build_simulation, inspect_video_metadata, to_optional_float
+    from physics import analyze_frames, analyze_trajectory, answer_question, build_diagnostics, build_params, build_simulation, inspect_video_metadata, to_optional_float
     from storage import VIDEO_DIR, build_report_text, delete_run, delete_runs, get_run, init_db, latest_run, list_runs, read_remote_video_asset, read_supabase_video_asset, save_run, save_run_video, storage_status, update_run_payload, use_supabase_storage
     from vision import build_video_track_config, detect_ball_from_image_bytes, extract_trajectory_from_video_bytes, inspect_vision_runtime
 
 
 ROOT = Path(__file__).resolve().parents[1]
 FRONTEND = ROOT / "frontend"
+
+
+def enrich_run_analysis(run: dict | None) -> dict | None:
+    if not run:
+        return None
+    result = run.get("result") or {}
+    has_transient = bool((result.get("transient") or {}).get("available") is not None)
+    has_phases = bool(run.get("motion_phases"))
+    frames = run.get("frames") or []
+    if (has_transient and has_phases) or len(frames) < 12:
+        return run
+    try:
+        current = analyze_frames(build_params(run.get("params") or {}), frames, student=run.get("student") or {})
+    except (ValueError, KeyError, TypeError, ZeroDivisionError):
+        return run
+
+    enriched = dict(run)
+    if not has_phases and current.get("motion_phases"):
+        enriched["motion_phases"] = current["motion_phases"]
+    if not has_transient and (current.get("result") or {}).get("transient"):
+        enriched["result"] = {**result, "transient": current["result"]["transient"]}
+    return enriched
 
 
 class PlatformHandler(BaseHTTPRequestHandler):
@@ -62,7 +84,7 @@ class PlatformHandler(BaseHTTPRequestHandler):
             return
         if parsed.path.startswith("/api/runs/") and parsed.path.endswith("/report"):
             run_id = int(parsed.path.split("/")[-2])
-            run = get_run(run_id)
+            run = enrich_run_analysis(get_run(run_id))
             if not run:
                 self.send_error(404, "Run not found")
                 return
@@ -74,7 +96,7 @@ class PlatformHandler(BaseHTTPRequestHandler):
             return
         if parsed.path.startswith("/api/runs/"):
             run_id = int(parsed.path.rsplit("/", 1)[-1])
-            run = get_run(run_id)
+            run = enrich_run_analysis(get_run(run_id))
             if not run:
                 self.send_error(404, "Run not found")
                 return
