@@ -3095,10 +3095,9 @@ input[type="range"]:focus-visible {
 }
 
 .simulation-layout {
-  grid-template-columns: minmax(330px, 0.42fr) minmax(0, 1fr);
+  grid-template-columns: minmax(310px, 0.94fr) minmax(340px, 0.76fr) minmax(310px, 0.82fr);
   grid-template-areas:
-    "sim-controls sim-scene"
-    "sim-feedback sim-scene";
+    "sim-controls sim-scene sim-feedback";
   gap: clamp(14px, 1.4vw, 20px);
   align-items: start;
 }
@@ -4428,6 +4427,11 @@ input[type="range"]:focus-visible {
   gap: 14px;
 }
 
+.simulation-scene-panel {
+  display: flex;
+  flex-direction: column;
+}
+
 .simulation-setup-header,
 .simulation-scene-head {
   display: flex;
@@ -4666,7 +4670,7 @@ input[type="range"]:focus-visible {
 #simulationCanvas {
   width: 100%;
   margin-top: 12px;
-  aspect-ratio: 1.86 / 1;
+  aspect-ratio: 1.62 / 1;
   border-radius: 18px;
   border: 1px solid rgba(217, 221, 213, 0.92);
   background: #fbfcfa;
@@ -4685,7 +4689,7 @@ input[type="range"]:focus-visible {
 
 .simulation-result-ribbon {
   display: grid;
-  grid-template-columns: repeat(7, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
   margin-top: 10px;
   padding: 8px;
@@ -4695,8 +4699,8 @@ input[type="range"]:focus-visible {
 }
 
 .simulation-result-ribbon .metric {
-  min-height: 70px;
-  padding: 10px;
+  min-height: 64px;
+  padding: 9px;
   border-radius: 12px;
   background: rgba(255, 255, 255, 0.86);
 }
@@ -4825,10 +4829,9 @@ input[type="range"]:focus-visible {
 
 @media (max-width: 1240px) {
   .simulation-layout {
-    grid-template-columns: minmax(320px, 0.42fr) minmax(0, 1fr);
+    grid-template-columns: minmax(290px, 0.9fr) minmax(320px, 0.74fr) minmax(290px, 0.78fr);
     grid-template-areas:
-      "sim-controls sim-scene"
-      "sim-feedback sim-scene";
+      "sim-controls sim-scene sim-feedback";
   }
 
   .simulation-feedback-panel {
@@ -5287,11 +5290,18 @@ input[type="range"]:focus-visible {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 10px;
-  margin-top: 10px;
+  margin-top: 12px;
   padding: 10px;
   border-radius: 15px;
   background: rgba(241, 244, 241, 0.72);
   border: 1px solid rgba(217, 221, 213, 0.9);
+}
+
+.quality-strip {
+  margin-bottom: 12px;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.9), rgba(239, 246, 241, 0.82)),
+    rgba(241, 244, 241, 0.72);
 }
 
 .algorithm-strip article {
@@ -7739,10 +7749,9 @@ svg {
   }
 
   .simulation-layout {
-    grid-template-columns: minmax(320px, 0.42fr) minmax(0, 1fr);
+    grid-template-columns: minmax(300px, 0.92fr) minmax(330px, 0.76fr) minmax(300px, 0.82fr);
     grid-template-areas:
-      "sim-controls sim-scene"
-      "sim-feedback sim-scene";
+      "sim-controls sim-scene sim-feedback";
   }
 
   .simulation-advice-head {

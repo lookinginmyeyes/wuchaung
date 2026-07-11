@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>落球法测液体粘滞系数实验 AI 学习平台</title>
     <link rel="icon" href="./assets/generated/icons/calibration.png" />
-    <link rel="stylesheet" href="./styles.css?v=phase-records-v129" />
+    <link rel="stylesheet" href="./styles.css?v=sim-layout-quality-v136" />
   </head>
   <body data-source="realtime">
     <div class="app-shell">
@@ -826,6 +826,34 @@
               <span id="runBadge" class="badge">等待运行</span>
             </div>
 
+            <div class="algorithm-strip quality-strip" aria-label="实验质量直读指标">
+              <article style="--i:0" data-quality-level="neutral">
+                <span>速度来源</span>
+                <strong id="fitMethod">--</strong>
+                <small id="fitMethodDetail">等待速度拟合</small>
+              </article>
+              <article style="--i:1" data-quality-level="neutral">
+                <span>异常点处理</span>
+                <strong id="outlierCount">--</strong>
+                <small id="outlierDetail">等待轨迹预处理</small>
+              </article>
+              <article style="--i:2" data-quality-level="neutral">
+                <span>平台平稳程度</span>
+                <strong id="segmentCv">--</strong>
+                <small id="segmentCvDetail">越低越接近匀速</small>
+              </article>
+              <article style="--i:3" data-quality-level="neutral">
+                <span>识别稳定度</span>
+                <strong id="trackingConfidence">--</strong>
+                <small id="trackingConfidenceDetail">小球识别越稳越高</small>
+              </article>
+              <article style="--i:4" data-quality-level="neutral">
+                <span>换段影响</span>
+                <strong id="segmentSensitivity">--</strong>
+                <small id="segmentSensitivityDetail">换相邻平台段后 vt 的变化</small>
+              </article>
+            </div>
+
             <section class="chart-area" aria-label="测量曲线区">
               <div class="chart-tabs">
                 <button class="active" data-chart="position" type="button">
@@ -877,34 +905,6 @@
                     <span>Re</span>
                     <strong id="re">--</strong>
                     <small>适用条件判断</small>
-                  </article>
-                </div>
-
-                <div class="algorithm-strip" aria-label="实验质量直读指标">
-                  <article style="--i:0" data-quality-level="neutral">
-                    <span>速度来源</span>
-                    <strong id="fitMethod">--</strong>
-                    <small id="fitMethodDetail">等待速度拟合</small>
-                  </article>
-                  <article style="--i:1" data-quality-level="neutral">
-                    <span>异常点处理</span>
-                    <strong id="outlierCount">--</strong>
-                    <small id="outlierDetail">等待轨迹预处理</small>
-                  </article>
-                  <article style="--i:2" data-quality-level="neutral">
-                    <span>平台平稳程度</span>
-                    <strong id="segmentCv">--</strong>
-                    <small id="segmentCvDetail">越低越接近匀速</small>
-                  </article>
-                  <article style="--i:3" data-quality-level="neutral">
-                    <span>识别稳定度</span>
-                    <strong id="trackingConfidence">--</strong>
-                    <small id="trackingConfidenceDetail">小球识别越稳越高</small>
-                  </article>
-                  <article style="--i:4" data-quality-level="neutral">
-                    <span>换段影响</span>
-                    <strong id="segmentSensitivity">--</strong>
-                    <small id="segmentSensitivityDetail">换相邻平台段后 vt 的变化</small>
                   </article>
                 </div>
               </div>
@@ -1466,6 +1466,6 @@
     </div>
 
     <div id="toast" class="toast"></div>
-    <script src="./app.js?v=record-quality-render-v134"></script>
+    <script src="./app.js?v=sim-layout-quality-v136"></script>
   </body>
 </html>

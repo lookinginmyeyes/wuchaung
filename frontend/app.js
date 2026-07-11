@@ -4794,7 +4794,7 @@ function renderLockedRunResults(run) {
   el.viscosity.textContent = "待人工测量";
   el.r2.textContent = "--";
   el.re.textContent = "--";
-  resetQualityMetrics();
+  renderQualityMetrics(run);
   renderMotionPhaseCard(run, "locked");
   el.score.textContent = "待评分";
   el.downloadReport.href = "#";
