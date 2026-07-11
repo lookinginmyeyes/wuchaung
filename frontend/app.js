@@ -4214,7 +4214,7 @@ function renderUncertainty(run = state.latest) {
   el.uncertaintyCombined.textContent = formatPercent(combinedRel);
   el.uncertaintyStandard.textContent = `${formatPaS(standardU)} Pa·s`;
   el.uncertaintyExpanded.textContent = `${formatPaS(expandedU)} Pa·s`;
-  el.uncertaintyExpression.textContent = `d=${d.toFixed(3)} mm，D=${D.toFixed(1)} mm，H=${H.toFixed(1)} mm，l≈${l.toFixed(1)} mm，t≈${t.toFixed(3)} s；uAI≈${formatPercent(visualTerm)}；η = ${formatPaS(eta)} ± ${formatPaS(expandedU)} Pa·s，k=2`;
+  el.uncertaintyExpression.textContent = `d=${d.toFixed(3)} mm，D=${D.toFixed(1)} mm，H=${H.toFixed(1)} mm，l≈${l.toFixed(1)} mm，t≈${t.toFixed(3)} s；Δl标定=${deltaCalibration.toFixed(2)} mm，Δl离焦=${deltaFocus.toFixed(2)} mm，Δv选段/vt≈${formatPercent(segmentTerm)}；η = ${formatPaS(eta)} ± ${formatPaS(expandedU)} Pa·s，k=2`;
 }
 
 function updateAccessState() {

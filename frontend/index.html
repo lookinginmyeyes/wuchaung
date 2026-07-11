@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>落球法测液体粘滞系数实验 AI 学习平台</title>
     <link rel="icon" href="./assets/generated/icons/calibration.png" />
-    <link rel="stylesheet" href="./styles.css?v=uncertainty-ai-term-v137" />
+    <link rel="stylesheet" href="./styles.css?v=uncertainty-expanded-ai-v138" />
   </head>
   <body data-source="realtime">
     <div class="app-shell">
@@ -966,12 +966,26 @@
                     </span>
                     <span class="op">+</span>
                     <span class="term ai-term">
-                      <span class="paren">(</span>u<sub>AI</sub><span class="paren">)</span><sup>2</sup>
+                      <span class="paren">(</span>
+                      <span class="frac"><span>Δl<sub>标定</sub></span><span>l</span></span>
+                      <span class="paren">)</span><sup>2</sup>
+                    </span>
+                    <span class="op">+</span>
+                    <span class="term ai-term">
+                      <span class="paren">(</span>
+                      <span class="frac"><span>Δl<sub>离焦</sub></span><span>l</span></span>
+                      <span class="paren">)</span><sup>2</sup>
+                    </span>
+                    <span class="op">+</span>
+                    <span class="term ai-term">
+                      <span class="paren">(</span>
+                      <span class="frac"><span>Δv<sub>选段</sub></span><span>v<sub>t</sub></span></span>
+                      <span class="paren">)</span><sup>2</sup>
                     </span>
                   </span>
                 </span>
               </div>
-              <small>采用文献中的相对不确定度传播式，并把 AI 标定项并入根号：u<sub>AI</sub> 由标定、离焦和选段影响合成；d=2r。</small>
+              <small>采用文献中的相对不确定度传播式；新增项已直接写入根号：标定误差 Δl<sub>标定</sub>、离焦误差 Δl<sub>离焦</sub>、选段速度敏感度 Δv<sub>选段</sub>；d=2r。</small>
             </div>
             <div class="uncertainty-input-grid">
               <label>
@@ -1009,7 +1023,7 @@
               <span>H 液体深度</span>
               <span>l 匀速段距离</span>
               <span>t 匀速段时间</span>
-              <span>uAI 标定/离焦/选段</span>
+              <span>Δl标定/Δl离焦/Δv选段</span>
             </div>
             <div class="uncertainty-results">
               <article>
@@ -1442,6 +1456,6 @@
     </div>
 
     <div id="toast" class="toast"></div>
-    <script src="./app.js?v=uncertainty-ai-term-v137"></script>
+    <script src="./app.js?v=uncertainty-expanded-ai-v138"></script>
   </body>
 </html>
