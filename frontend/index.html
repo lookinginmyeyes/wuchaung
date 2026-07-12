@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>落球法测液体粘滞系数实验 AI 学习平台</title>
     <link rel="icon" href="./assets/generated/icons/calibration.png" />
-    <link rel="stylesheet" href="./styles.css?v=simulation-classic-v140" />
+    <link rel="stylesheet" href="./styles.css?v=review-summary-clean-v151" />
   </head>
   <body data-source="realtime">
     <div class="app-shell">
@@ -732,32 +732,23 @@
 
                 <div class="nonlinear-correction-card">
                   <div>
-                    <span>免参数非线性修正</span>
-                    <strong>多点标定棒 · 双模型对比 · 实测映射</strong>
-                    <p>OpenCV 输出小球像素坐标后，系统使用同一组标定棒点击点拟合 Y_real = f(y_pixel)。可在分段插值和多项式修正之间切换，对比哪种更接近真实测量。</p>
+                    <span>标定映射</span>
+                    <strong>多点标定棒 · 分段插值</strong>
                   </div>
                   <div class="nonlinear-toggle-row">
                     <label class="switch-row">
                       <input id="nonlinearCorrectionEnabled" type="checkbox" checked />
-                      <span>启用多点标定映射</span>
+                      <span>启用标定映射</span>
                     </label>
-                    <div class="correction-mode-switch" role="group" aria-label="选择非线性修正方式">
-                      <button class="active" data-correction-mode="piecewise" type="button" aria-pressed="true">
-                        <span>分段插值</span>
-                      </button>
-                      <button data-correction-mode="polynomial" type="button" aria-pressed="false">
-                        <span>多项式修正</span>
-                      </button>
-                    </div>
                   </div>
                   <div class="nonlinear-status-strip">
                     <article>
                       <span>修正模型</span>
-                      <strong id="nonlinearCorrectionModel">多点标定映射</strong>
+                      <strong id="nonlinearCorrectionModel">分段插值</strong>
                     </article>
                     <article>
                       <span>输入来源</span>
-                      <strong id="nonlinearCorrectionSource">等待刻度点</strong>
+                      <strong id="nonlinearCorrectionSource">等待标定点</strong>
                     </article>
                     <article>
                       <span>输出字段</span>
@@ -798,22 +789,6 @@
                 <img class="button-art" src="./assets/generated/buttons/upload-trajectory.png" alt="" />
                 <span>开始实时追踪</span>
               </button>
-            </div>
-
-            <div class="schema-panel">
-              <div>
-                <span>当前输入要求</span>
-                <strong id="sourceSchemaTitle">实时输入</strong>
-              </div>
-              <p id="sourceSchemaDetail">先连接实时画面，标注量筒边缘并完成标定，再开始追踪小球下落。</p>
-            </div>
-
-            <div class="file-queue" id="fileQueue">
-              <article>
-                <span>待连接</span>
-                <strong>等待实时画面</strong>
-                <p>连接摄像头后先标定，再开始追踪。</p>
-              </article>
             </div>
           </section>
 
@@ -874,7 +849,7 @@
                     <small>拟合稳定性</small>
                   </article>
                   <article class="metric">
-                    <span>Re</span>
+                    <span>雷诺数 Re</span>
                     <strong id="re">--</strong>
                     <small>适用条件判断</small>
                   </article>
@@ -970,22 +945,9 @@
                       <span class="frac"><span>Δl<sub>标定</sub></span><span>l</span></span>
                       <span class="paren">)</span><sup>2</sup>
                     </span>
-                    <span class="op">+</span>
-                    <span class="term ai-term">
-                      <span class="paren">(</span>
-                      <span class="frac"><span>Δl<sub>离焦</sub></span><span>l</span></span>
-                      <span class="paren">)</span><sup>2</sup>
-                    </span>
-                    <span class="op">+</span>
-                    <span class="term ai-term">
-                      <span class="paren">(</span>
-                      <span class="frac"><span>Δv<sub>选段</sub></span><span>v<sub>t</sub></span></span>
-                      <span class="paren">)</span><sup>2</sup>
-                    </span>
                   </span>
                 </span>
               </div>
-              <small>采用文献中的相对不确定度传播式；新增项已直接写入根号：标定误差 Δl<sub>标定</sub>、离焦误差 Δl<sub>离焦</sub>、选段速度敏感度 Δv<sub>选段</sub>；d=2r。</small>
             </div>
             <div class="uncertainty-input-grid">
               <label>
@@ -998,23 +960,19 @@
               </label>
               <label>
                 <span>Δl mm</span>
-                <input id="uncertaintyDistanceMm" data-uncertainty-input type="number" value="0.5" min="0" step="0.1" />
+                <input id="uncertaintyDistanceMm" data-uncertainty-input type="number" value="1.0" min="0" step="0.1" />
               </label>
               <label>
                 <span>ΔD mm</span>
-                <input id="uncertaintyTubeDiameterMm" data-uncertainty-input type="number" value="0.5" min="0" step="0.1" />
+                <input id="uncertaintyTubeDiameterMm" data-uncertainty-input type="number" value="0.01" min="0" step="0.001" />
               </label>
               <label>
                 <span>ΔH mm</span>
-                <input id="uncertaintyLiquidDepthMm" data-uncertainty-input type="number" value="1" min="0" step="0.1" />
+                <input id="uncertaintyLiquidDepthMm" data-uncertainty-input type="number" value="5" min="0" step="0.1" />
               </label>
               <label>
-                <span>Δ标定 mm</span>
-                <input id="uncertaintyCalibrationMm" data-uncertainty-input type="number" value="0.2" min="0" step="0.01" />
-              </label>
-              <label>
-                <span>Δ离焦 mm</span>
-                <input id="uncertaintyFocusMm" data-uncertainty-input type="number" value="0.2" min="0" step="0.01" />
+                <span>Δ标定点 mm</span>
+                <input id="uncertaintyCalibrationMm" data-uncertainty-input type="number" value="0.5" min="0" step="0.01" />
               </label>
             </div>
             <div class="uncertainty-variable-note">
@@ -1023,7 +981,7 @@
               <span>H 液体深度</span>
               <span>l 匀速段距离</span>
               <span>t 匀速段时间</span>
-              <span>Δl标定/Δl离焦/Δv选段</span>
+              <span>Δl标定 鼠标点选误差</span>
             </div>
             <div class="uncertainty-results">
               <article>
@@ -1035,7 +993,7 @@
                 <strong id="uncertaintyTimingTerm">--</strong>
               </article>
               <article>
-                <span>AI视觉附加项</span>
+                <span>标定点选项</span>
                 <strong id="uncertaintyVisualTerm">--</strong>
               </article>
               <article class="primary">
@@ -1106,114 +1064,129 @@
           <section class="app-view simulation-view" id="view-simulation" data-view="simulation" hidden>
             <section class="simulation-layout">
               <section class="panel simulation-control-panel">
-                <div class="section-title">
+                <div class="simulation-setup-header">
                   <div>
-                    <p class="eyebrow">虚拟仿真</p>
-                    <h2>选定液体，输出速度和位移</h2>
+                    <p class="eyebrow">虚拟仿真实验</p>
+                    <h2>先设条件，再观察落球</h2>
+                    <p>围绕液体、容器和小球三个变量生成 s-t / v-t 曲线，用来判断终端速度平台是否清晰。</p>
                   </div>
+                  <span id="simulationStatus" class="badge">等待运行</span>
                 </div>
-                <div class="form-grid">
-                  <label>
-                    <span>情境预设</span>
-                    <select id="simScenario">
-                      <option value="standard">纯甘油 25℃ · η 0.945 Pa·s</option>
-                      <option value="wall">纯甘油 20℃ · η 1.412 Pa·s</option>
-                      <option value="glare">500 cSt 硅油 25℃ · η 0.485 Pa·s</option>
-                      <option value="propylene_glycol_25">丙二醇 25℃ · η 48.6 mPa·s</option>
-                      <option value="ethylene_glycol_20">乙二醇 20℃ · η 19.8 mPa·s</option>
-                      <option value="ethanol_20">无水乙醇 20℃ · η 1.200 mPa·s</option>
-                      <option value="methanol_25">甲醇 25℃ · η 0.543 mPa·s</option>
-                      <option value="water_20">纯水 20℃ · η 1.0016 mPa·s</option>
-                    </select>
-                    <small id="simLiquidNote" class="field-note">ρ=1261 kg/m³，η=0.945 Pa·s，纯甘油 25℃表值。</small>
-                  </label>
-                  <label>
-                    <span>小球半径 mm</span>
-                    <input id="simRadiusMm" type="number" value="1.5" min="0.8" max="3.5" step="0.1" />
-                  </label>
-                  <label>
-                    <span>量筒内径 mm</span>
-                    <input id="simTubeMm" type="number" value="35" min="1" max="80" step="1" />
-                  </label>
-                  <label>
-                    <span>待测液体深度 mm</span>
-                    <input id="simDepthMm" type="number" value="220" min="1" max="500" step="1" />
-                  </label>
-                </div>
-                <div class="range-block simulation-ranges">
-                  <label>
-                    <span>初始扰动 <strong id="simReleaseValue">0%</strong></span>
-                    <input id="simRelease" type="range" value="0" min="0" max="1" step="0.01" />
-                  </label>
-                  <label>
-                    <span>介质阻尼扰动 <strong id="simRefractionValue">0%</strong></span>
-                    <input id="simRefraction" type="range" value="0" min="0" max="1" step="0.01" />
-                  </label>
-                  <label>
-                    <span>速度采样稳定性 <strong id="simLightingValue">100%</strong></span>
-                    <input id="simLighting" type="range" value="1" min="0.2" max="1" step="0.01" />
-                  </label>
-                </div>
-                <div class="quiz-actions">
+
+                <div class="simulation-action-row">
                   <button id="runSimulationBtn" class="primary-button" type="button">
                     <img class="button-art" src="./assets/generated/buttons/run-analysis.png" alt="" />
-                    <span>生成速度和位移曲线</span>
+                    <span>开始仿真</span>
                   </button>
                   <button id="backToDashboardBtn" class="ghost-button" type="button" data-go-view="dashboard">
                     <img class="button-art" src="./assets/generated/buttons/refresh-records.png" alt="" />
                     <span>返回大厅</span>
                   </button>
                 </div>
+
+                <div class="simulation-setup-grid">
+                  <div class="simulation-field-group liquid-group">
+                    <div class="simulation-group-title">
+                      <span>01</span>
+                      <strong>液体</strong>
+                    </div>
+                    <div class="form-grid">
+                      <label>
+                        <span>选定液体</span>
+                        <select id="simScenario">
+                          <option value="纯甘油">纯甘油</option>
+                          <option value="500 cSt 硅油">500 cSt 硅油</option>
+                          <option value="蓖麻油">蓖麻油</option>
+                          <option value="纯水">纯水</option>
+                          <option value="无水乙醇">无水乙醇</option>
+                          <option value="甲醇">甲醇</option>
+                          <option value="乙二醇">乙二醇</option>
+                          <option value="丙二醇">丙二醇</option>
+                        </select>
+                      </label>
+                      <label>
+                        <span>温度 ℃</span>
+                        <input id="simTemperatureC" type="number" value="25" min="0" max="60" step="0.1" />
+                      </label>
+                      <label>
+                        <span>参考粘度 Pa·s</span>
+                        <input id="simEtaReference" type="number" value="0.945" step="0.000001" readonly />
+                        <small id="simLiquidNote" class="field-note">系统按输入温度匹配最接近的表值。</small>
+                      </label>
+                      <label>
+                        <span>液体密度 kg/m³</span>
+                        <input id="simRhoLiquid" type="number" value="1261" step="0.1" readonly />
+                      </label>
+                    </div>
+                  </div>
+
+                  <div class="simulation-field-group geometry-group">
+                    <div class="simulation-group-title">
+                      <span>02</span>
+                      <strong>装置</strong>
+                    </div>
+                    <div class="form-grid">
+                      <label>
+                        <span>小球半径 mm</span>
+                        <input id="simRadiusMm" type="number" value="1.5" min="0.1" max="80" step="0.1" />
+                      </label>
+                      <label>
+                        <span>量筒内径 mm</span>
+                        <input id="simTubeMm" type="number" value="35" min="1" max="80" step="1" />
+                      </label>
+                      <label>
+                        <span>液体深度 mm</span>
+                        <input id="simDepthMm" type="number" value="220" min="1" max="500" step="1" />
+                      </label>
+                    </div>
+                  </div>
+
+                </div>
+
               </section>
 
               <section class="panel simulation-scene-panel">
-                <div class="section-title">
+                <div class="simulation-scene-head">
                   <div>
-                    <p class="eyebrow">仿真曲线</p>
-                    <h2>小球位移与速度曲线</h2>
+                    <p class="eyebrow">运动观察</p>
+                    <h2>量筒中的小球下落</h2>
+                  </div>
+                  <div class="chart-tabs simulation-chart-tabs" aria-label="虚拟仿真曲线切换">
+                    <button class="active" data-sim-chart="position" type="button">
+                      <img src="./assets/generated/buttons/position-curve.png" alt="" />
+                      <span>s-t 图</span>
+                    </button>
+                    <button data-sim-chart="velocity" type="button">
+                      <img src="./assets/generated/buttons/velocity-curve.png" alt="" />
+                      <span>v-t 图</span>
+                    </button>
                   </div>
                 </div>
-                <canvas id="simulationCanvas" width="900" height="560" aria-label="虚拟落球仿真画面"></canvas>
-                <div class="metric-grid compact simulation-metrics">
+                <canvas id="simulationCanvas" width="1040" height="604" aria-label="虚拟落球仿真画面"></canvas>
+                <div class="simulation-result-ribbon">
                   <article class="metric primary">
                     <span>终端速度 vt</span>
                     <strong id="simVt">--</strong>
-                    <small>仿真输出速度</small>
                   </article>
                   <article class="metric">
                     <span>已知液体 η</span>
                     <strong id="simEta">--</strong>
-                    <small>仿真输入参数</small>
-                  </article>
-                  <article class="metric">
-                    <span>速度稳定性</span>
-                    <strong id="simScore">--</strong>
-                    <small>扰动、阻尼、采样综合</small>
                   </article>
                   <article class="metric">
                     <span>状态标签</span>
                     <strong id="simRisk">--</strong>
-                    <small>用于实验前训练</small>
                   </article>
                   <article class="metric">
                     <span>Re</span>
                     <strong id="simRe">--</strong>
-                    <small>二级修正判据</small>
                   </article>
                   <article class="metric">
-                    <span>K壁</span>
+                    <span>壁面修正 K壁</span>
                     <strong id="simWallCorrection">--</strong>
-                    <small>半径与深度修正</small>
                   </article>
                   <article class="metric">
-                    <span>KRe</span>
+                    <span>雷诺修正 KRe</span>
                     <strong id="simReCorrection">--</strong>
-                    <small>1 + 3Re/16 - 19Re²/1080</small>
-                  </article>
-                  <article class="metric">
-                    <span>K总</span>
-                    <strong id="simCorrectionTotal">--</strong>
-                    <small>综合修正因子</small>
                   </article>
                 </div>
               </section>
@@ -1225,14 +1198,14 @@
                     <h2>操作建议</h2>
                   </div>
                   <div class="simulation-run-module" aria-label="仿真运行模块">
-                    <span>仿真运行模块</span>
+                    <span>当前状态</span>
                     <strong id="simFeedbackState">等待运行</strong>
                     <small id="simFeedbackVt">vt --</small>
                   </div>
                 </div>
                 <div class="simulation-advice-brief">
-                  <span>反馈依据</span>
-                  <p>运行后根据速度曲线、球筒径比、扰动强度与采样稳定性生成下一步建议。</p>
+                  <span>看什么</span>
+                  <p>先观察曲线是否出现稳定平台，再看 Re 与 K壁 是否支持这组条件。</p>
                 </div>
                 <div id="simulationRubric" class="simulation-advice-list">
                   <article class="simulation-advice-row empty">
@@ -1242,7 +1215,7 @@
                         <strong>等待仿真运行</strong>
                         <span class="advice-level">待生成</span>
                       </div>
-                      <p>运行后会显示已知液体参数、小球速度输出和速度稳定性建议。</p>
+                      <p>运行后会显示已知液体参数、小球速度输出和边界修正建议。</p>
                     </div>
                   </article>
                 </div>
@@ -1418,6 +1391,6 @@
     </div>
 
     <div id="toast" class="toast"></div>
-    <script src="./app.js?v=simulation-classic-v140"></script>
+    <script src="./app.js?v=review-summary-clean-v151"></script>
   </body>
 </html>

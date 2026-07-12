@@ -21,7 +21,6 @@ class VideoTrackConfig:
     use_norfair: bool = False
     norfair_distance_px: float = 36.0
     nonlinear_correction: bool = False
-    axis_correction_mode: str = "piecewise"
     liquid_depth_m: float | None = None
     tube_radius_m: float | None = None
     refractive_index: float = 1.47
@@ -71,7 +70,6 @@ def build_video_track_config(payload: dict[str, Any]) -> VideoTrackConfig:
         use_norfair=str(payload.get("use_norfair", "")).lower() in {"1", "true", "yes", "on"},
         norfair_distance_px=float(payload.get("norfair_distance_px", 36) or 36),
         nonlinear_correction=str(payload.get("nonlinear_correction", "")).lower() in {"1", "true", "yes", "on"},
-        axis_correction_mode=_axis_correction_mode(payload.get("axis_correction_mode")),
         liquid_depth_m=_optional_float(payload.get("liquid_depth_m")),
         tube_radius_m=_optional_float(payload.get("tube_radius_m")),
         refractive_index=float(payload.get("refractive_index", 1.47) or 1.47),
@@ -264,7 +262,7 @@ def correct_axis_position(
     if not config.nonlinear_correction:
         return y_linear, {"enabled": False, "model": "linear_scale"}
 
-    mapped, model_meta = map_axis_calibration(y_norm, config.axis_calibration_points, config.axis_correction_mode)
+    mapped, model_meta = map_axis_calibration(y_norm, config.axis_calibration_points)
     if mapped is not None:
         points = config.axis_calibration_points or ()
         return mapped, {
@@ -287,12 +285,7 @@ def correct_axis_position(
 def map_axis_calibration(
     y_norm: float | None,
     points: tuple[tuple[float, float], ...] | None,
-    mode: str,
 ) -> tuple[float | None, dict[str, Any]]:
-    if mode == "polynomial":
-        mapped, meta = polynomial_axis_calibration(y_norm, points)
-        if mapped is not None:
-            return mapped, meta
     mapped = interpolate_axis_calibration(y_norm, points)
     if mapped is None:
         return None, {"model": "linear_scale"}
@@ -325,77 +318,6 @@ def interpolate_axis_calibration(y_norm: float | None, points: tuple[tuple[float
         return left[1]
     ratio = (y - left[0]) / dy
     return left[1] + ratio * (right[1] - left[1])
-
-
-def polynomial_axis_calibration(
-    y_norm: float | None,
-    points: tuple[tuple[float, float], ...] | None,
-) -> tuple[float | None, dict[str, Any]]:
-    if y_norm is None or not points or len(points) < 2 or not math.isfinite(y_norm):
-        return None, {"model": "linear_scale"}
-
-    ordered = sorted(points, key=lambda item: item[0])
-    degree = min(3, len(ordered) - 1)
-    x_min = ordered[0][0]
-    x_max = ordered[-1][0]
-    x_mid = (x_min + x_max) / 2
-    x_half_span = max((x_max - x_min) / 2, 1e-9)
-    normalized_points = [((x - x_mid) / x_half_span, real) for x, real in ordered]
-    coefficients = least_squares_polynomial(normalized_points, degree)
-    if coefficients is None:
-        return None, {"model": "calibration_rod_polynomial_failed", "mode": "polynomial", "degree": degree}
-
-    x_eval = (float(y_norm) - x_mid) / x_half_span
-    mapped = sum(coefficient * (x_eval ** power) for power, coefficient in enumerate(coefficients))
-    if not math.isfinite(mapped):
-        return None, {"model": "calibration_rod_polynomial_failed", "mode": "polynomial", "degree": degree}
-
-    real_min = min(real for _, real in ordered)
-    real_max = max(real for _, real in ordered)
-    mapped = max(real_min, min(real_max, mapped))
-    return mapped, {
-        "model": "calibration_rod_polynomial",
-        "mode": "polynomial",
-        "degree": degree,
-        "basis": "normalized_y",
-    }
-
-
-def least_squares_polynomial(points: list[tuple[float, float]], degree: int) -> list[float] | None:
-    size = degree + 1
-    matrix = [[0.0 for _ in range(size)] for _ in range(size)]
-    vector = [0.0 for _ in range(size)]
-    for x, y in points:
-        powers = [1.0]
-        for _ in range(1, size * 2):
-            powers.append(powers[-1] * x)
-        for row in range(size):
-            vector[row] += y * powers[row]
-            for col in range(size):
-                matrix[row][col] += powers[row + col]
-    return solve_linear_system(matrix, vector)
-
-
-def solve_linear_system(matrix: list[list[float]], vector: list[float]) -> list[float] | None:
-    n = len(vector)
-    augmented = [row[:] + [value] for row, value in zip(matrix, vector)]
-    for col in range(n):
-        pivot = max(range(col, n), key=lambda row: abs(augmented[row][col]))
-        if abs(augmented[pivot][col]) < 1e-12:
-            return None
-        augmented[col], augmented[pivot] = augmented[pivot], augmented[col]
-        pivot_value = augmented[col][col]
-        for item in range(col, n + 1):
-            augmented[col][item] /= pivot_value
-        for row in range(n):
-            if row == col:
-                continue
-            factor = augmented[row][col]
-            if abs(factor) < 1e-15:
-                continue
-            for item in range(col, n + 1):
-                augmented[row][item] -= factor * augmented[col][item]
-    return [augmented[row][n] for row in range(n)]
 
 
 def crop_roi(frame, roi):
@@ -606,11 +528,6 @@ def _optional_radius_limit(value) -> int | None:
     if parsed is None or parsed <= 0:
         return None
     return max(2, int(parsed))
-
-
-def _axis_correction_mode(value) -> str:
-    mode = str(value or "piecewise").strip().lower()
-    return "polynomial" if mode in {"polynomial", "poly"} else "piecewise"
 
 
 def _parse_axis_calibration_points(value) -> tuple[tuple[float, float], ...] | None:

@@ -3,6 +3,11 @@ __pycache__/
 .venv/
 .deploy/
 /*.png
+/*.docx
+*.webm
 data/
+docx_quicklook_lecture/
+logs/
+outputs/
 .DS_Store
 .env

@@ -74,7 +74,6 @@ const state = {
   calibrationPoints: [],
   calibrationEditIndex: null,
   axisCalibrationPoints: [],
-  correctionMode: "piecewise",
   manualScaleMPerPx: null,
   liveZoomMode: null,
   manualZoomActive: false,
@@ -214,13 +213,9 @@ const el = {
   calibrationRodLengthMm: document.getElementById("calibrationRodLengthMm"),
   calibrationRodSamples: document.getElementById("calibrationRodSamples"),
   nonlinearCorrectionEnabled: document.getElementById("nonlinearCorrectionEnabled"),
-  correctionModeTitle: document.getElementById("correctionModeTitle"),
-  correctionModeDetail: document.getElementById("correctionModeDetail"),
   rodTickSpacingMm: document.getElementById("rodTickSpacingMm"),
   nonlinearCorrectionModel: document.getElementById("nonlinearCorrectionModel"),
   nonlinearCorrectionSource: document.getElementById("nonlinearCorrectionSource"),
-  sourceSchemaTitle: document.getElementById("sourceSchemaTitle"),
-  sourceSchemaDetail: document.getElementById("sourceSchemaDetail"),
   fileQueue: document.getElementById("fileQueue"),
   filePicker: document.querySelector(".file-picker"),
   runBadge: document.getElementById("runBadge"),
@@ -260,7 +255,6 @@ const el = {
   uncertaintyTubeDiameterMm: document.getElementById("uncertaintyTubeDiameterMm"),
   uncertaintyLiquidDepthMm: document.getElementById("uncertaintyLiquidDepthMm"),
   uncertaintyCalibrationMm: document.getElementById("uncertaintyCalibrationMm"),
-  uncertaintyFocusMm: document.getElementById("uncertaintyFocusMm"),
   uncertaintyDiameterTerm: document.getElementById("uncertaintyDiameterTerm"),
   uncertaintyTimingTerm: document.getElementById("uncertaintyTimingTerm"),
   uncertaintyVisualTerm: document.getElementById("uncertaintyVisualTerm"),
@@ -308,7 +302,6 @@ const el = {
   simulationCanvas: document.getElementById("simulationCanvas"),
   simVt: document.getElementById("simVt"),
   simEta: document.getElementById("simEta"),
-  simScore: document.getElementById("simScore"),
   simRisk: document.getElementById("simRisk"),
   simRe: document.getElementById("simRe"),
   simWallCorrection: document.getElementById("simWallCorrection"),
@@ -391,8 +384,6 @@ const dataSources = {
     status: "OpenCV可追踪",
     name: "摄像机视频",
     detail: "导入固定机位拍摄的落球视频，后端使用 OpenCV 提取小球中心轨迹，再进入速度曲线和粘度计算。",
-    schemaTitle: "视频追踪输入",
-    schemaDetail: "建议画面包含中心标定棒、量筒边界和完整落球过程；先完成标定再追踪小球。",
     accept: "video/mp4,video/quicktime,video/webm,video/x-m4v",
     pickerLabel: "选择实验视频",
     actionLabel: "OpenCV追踪视频",
@@ -402,8 +393,6 @@ const dataSources = {
     status: "OpenCV可接入",
     name: "OpenCV 实时追踪",
     detail: "连接摄像头后进行标定与追踪。",
-    schemaTitle: "实时输入",
-    schemaDetail: "先标定，再开始追踪。",
     accept: "video/*",
     pickerLabel: "选择备用视频",
     actionLabel: "开始实时追踪",
@@ -823,8 +812,7 @@ const blindLiquidCandidates = [
 
 // Standard table values at the listed temperature. Viscosity is strongly temperature-dependent.
 const simulationPresets = {
-  standard: {
-    note: "ρ=1261 kg/m³，η=0.945 Pa·s，纯甘油 25℃表值。",
+  "纯甘油": {
     radius: 1.5,
     tube: 35,
     depth: 220,
@@ -832,17 +820,7 @@ const simulationPresets = {
     damping: 0,
     stability: 1,
   },
-  wall: {
-    note: "ρ=1263 kg/m³，η=1.412 Pa·s，纯甘油 20℃表值。",
-    radius: 1.5,
-    tube: 35,
-    depth: 220,
-    release: 0,
-    damping: 0,
-    stability: 1,
-  },
-  glare: {
-    note: "ρ=970 kg/m³，η=0.485 Pa·s，由 500 cSt 硅油和 25℃密度换算。",
+  "500 cSt 硅油": {
     radius: 1.5,
     tube: 35,
     depth: 210,
@@ -850,8 +828,7 @@ const simulationPresets = {
     damping: 0,
     stability: 1,
   },
-  propylene_glycol_25: {
-    note: "ρ=1036 kg/m³，η=0.0486 Pa·s，丙二醇 25℃表值。",
+  "蓖麻油": {
     radius: 1.5,
     tube: 35,
     depth: 220,
@@ -859,8 +836,7 @@ const simulationPresets = {
     damping: 0,
     stability: 1,
   },
-  ethylene_glycol_20: {
-    note: "ρ=1113 kg/m³，η=0.0198 Pa·s，乙二醇 20℃表值。",
+  "乙二醇": {
     radius: 1.2,
     tube: 45,
     depth: 240,
@@ -868,8 +844,15 @@ const simulationPresets = {
     damping: 0,
     stability: 1,
   },
-  ethanol_20: {
-    note: "ρ=789 kg/m³，η=0.00120 Pa·s，无水乙醇 20℃表值；低粘度会明显提高 Re。",
+  "丙二醇": {
+    radius: 1.5,
+    tube: 35,
+    depth: 220,
+    release: 0,
+    damping: 0,
+    stability: 1,
+  },
+  "纯水": {
     radius: 0.8,
     tube: 60,
     depth: 260,
@@ -877,8 +860,7 @@ const simulationPresets = {
     damping: 0,
     stability: 1,
   },
-  methanol_25: {
-    note: "ρ=787 kg/m³，η=0.000543 Pa·s，甲醇 25℃表值；低粘度主要用于超限对比。",
+  "无水乙醇": {
     radius: 0.8,
     tube: 60,
     depth: 260,
@@ -886,8 +868,7 @@ const simulationPresets = {
     damping: 0,
     stability: 1,
   },
-  water_20: {
-    note: "ρ=998.2 kg/m³，η=0.0010016 Pa·s，纯水 20℃表值；通常会偏离低 Re 条件。",
+  "甲醇": {
     radius: 0.8,
     tube: 60,
     depth: 260,
@@ -1939,8 +1920,6 @@ function setDataSource(sourceKey) {
   el.sourceStatus.textContent = source.status;
   el.activeSourceName.textContent = source.name;
   el.activeSourceDetail.textContent = source.detail;
-  el.sourceSchemaTitle.textContent = source.schemaTitle;
-  el.sourceSchemaDetail.textContent = source.schemaDetail;
   el.trajectoryInput.accept = source.accept;
   el.uploadTrajectoryBtn.disabled = !source.enabled;
   el.uploadTrajectoryBtn.classList.toggle("disabled", !source.enabled);
@@ -2026,6 +2005,7 @@ function refreshLiveOverlayGeometry() {
 }
 
 function updateFileQueue(name, status, detail) {
+  if (!el.fileQueue) return;
   const statusClass = {
     待选择: "queued",
     待分析: "queued",
@@ -3944,7 +3924,6 @@ function appendNonlinearCorrectionParams(params) {
   const enabled = Boolean(el.nonlinearCorrectionEnabled?.checked);
   params.set("nonlinear_correction", enabled ? "true" : "false");
   if (!enabled) return;
-  params.set("axis_correction_mode", state.correctionMode);
 
   const axisPoints = state.axisCalibrationPoints.length >= 2
     ? state.axisCalibrationPoints
@@ -3957,48 +3936,13 @@ function appendNonlinearCorrectionParams(params) {
 function updateNonlinearCorrectionStatus() {
   const enabled = Boolean(el.nonlinearCorrectionEnabled?.checked);
   const pointCount = state.axisCalibrationPoints.length || state.calibrationPoints.length;
-  const modeLabel = correctionModeLabel(state.correctionMode);
-  const polynomialReady = state.correctionMode !== "polynomial" || pointCount >= 4;
   if (el.nonlinearCorrectionModel) {
-    el.nonlinearCorrectionModel.textContent = enabled ? modeLabel.status : "线性比例换算";
-  }
-  if (el.correctionModeTitle) {
-    el.correctionModeTitle.textContent = modeLabel.title;
-  }
-  if (el.correctionModeDetail) {
-    el.correctionModeDetail.textContent = modeLabel.detail;
+    el.nonlinearCorrectionModel.textContent = enabled ? "分段插值" : "线性换算";
   }
   if (el.nonlinearCorrectionSource) {
-    const source = pointCount >= 2
-      ? `${pointCount} 个实测刻度点${polynomialReady ? "" : "，多项式建议至少 4 点"}`
-      : "等待刻度点";
+    const source = pointCount >= 2 ? `${pointCount} 个标定点` : "等待标定点";
     el.nonlinearCorrectionSource.textContent = enabled ? source : "未启用";
   }
-}
-
-function setCorrectionMode(mode) {
-  state.correctionMode = mode === "polynomial" ? "polynomial" : "piecewise";
-  document.querySelectorAll("[data-correction-mode]").forEach((button) => {
-    const active = button.dataset.correctionMode === state.correctionMode;
-    button.classList.toggle("active", active);
-    button.setAttribute("aria-pressed", active ? "true" : "false");
-  });
-  updateNonlinearCorrectionStatus();
-}
-
-function correctionModeLabel(mode) {
-  if (mode === "polynomial") {
-    return {
-      title: "多项式全局修正",
-      status: "多项式标定映射",
-      detail: "优先使用三次多项式；标定点不足时自动降为二次或一次，适合观察整体非线性趋势。",
-    };
-  }
-  return {
-    title: "分段非线性插值",
-    status: "分段插值映射",
-    detail: "相邻刻度之间线性插值，局部误差不会扩散到整条标定棒。",
-  };
 }
 
 function estimateScaleMetersPerPixel() {
@@ -4198,9 +4142,6 @@ function renderUncertainty(run = state.latest) {
   const deltaTube = Math.max(0, number(el.uncertaintyTubeDiameterMm, 0));
   const deltaH = Math.max(0, number(el.uncertaintyLiquidDepthMm, 0));
   const deltaCalibration = Math.max(0, number(el.uncertaintyCalibrationMm, 0));
-  const deltaFocus = Math.max(0, number(el.uncertaintyFocusMm, 0));
-  const sensitivity = estimateSegmentSensitivity(run, terminalVelocity);
-  const segmentTerm = sensitivity?.relative || 0;
   const wallD = 1 + (2.4 * d) / D;
   const depthH = 1 + (1.6 * d) / H;
   const diameterCoefficient = (2 / d) - (2.4 / (wallD * D)) - (1.6 / (depthH * H));
@@ -4210,19 +4151,18 @@ function renderUncertainty(run = state.latest) {
   const tubeTerm = Math.abs(((2.4 * d) / (wallD * D * D)) * deltaTube);
   const depthTerm = Math.abs(((1.6 * d) / (depthH * H * H)) * deltaH);
   const timingTerm = Math.hypot(timeTerm, distanceTerm);
-  const visualSpatialTerm = Math.hypot(deltaCalibration, deltaFocus) / Math.max(l, 1e-12);
-  const visualTerm = Math.hypot(visualSpatialTerm, segmentTerm);
-  const combinedRel = Math.hypot(diameterTerm, timeTerm, distanceTerm, tubeTerm, depthTerm, visualSpatialTerm, segmentTerm);
+  const calibrationTerm = deltaCalibration / Math.max(l, 1e-12);
+  const combinedRel = Math.hypot(diameterTerm, timeTerm, distanceTerm, tubeTerm, depthTerm, calibrationTerm);
   const standardU = eta * combinedRel;
   const expandedU = standardU * 2;
   el.uncertaintyStatus.textContent = run.source === "simulation" ? "仿真对照" : "已计算";
   el.uncertaintyDiameterTerm.textContent = formatPercent(Math.hypot(diameterTerm, tubeTerm, depthTerm));
   el.uncertaintyTimingTerm.textContent = formatPercent(timingTerm);
-  if (el.uncertaintyVisualTerm) el.uncertaintyVisualTerm.textContent = formatPercent(visualTerm);
+  if (el.uncertaintyVisualTerm) el.uncertaintyVisualTerm.textContent = formatPercent(calibrationTerm);
   el.uncertaintyCombined.textContent = formatPercent(combinedRel);
   el.uncertaintyStandard.textContent = `${formatPaS(standardU)} Pa·s`;
   el.uncertaintyExpanded.textContent = `${formatPaS(expandedU)} Pa·s`;
-  el.uncertaintyExpression.textContent = `d=${d.toFixed(3)} mm，D=${D.toFixed(1)} mm，H=${H.toFixed(1)} mm，l≈${l.toFixed(1)} mm，t≈${t.toFixed(3)} s；Δl标定=${deltaCalibration.toFixed(2)} mm，Δl离焦=${deltaFocus.toFixed(2)} mm，Δv选段/vt≈${formatPercent(segmentTerm)}；η = ${formatPaS(eta)} ± ${formatPaS(expandedU)} Pa·s，k=2`;
+  el.uncertaintyExpression.textContent = `d=${d.toFixed(3)} mm，D=${D.toFixed(1)} mm，H=${H.toFixed(1)} mm，l≈${l.toFixed(1)} mm，t≈${t.toFixed(3)} s；鼠标标定点误差 Δl标定=${deltaCalibration.toFixed(2)} mm；η = ${formatPaS(eta)} ± ${formatPaS(expandedU)} Pa·s，k=2`;
 }
 
 function updateAccessState() {
@@ -4922,8 +4862,14 @@ function markdownTableToHtml(lines) {
 }
 
 function simulationPayload() {
+  const reference = simulationReferenceFromInputs();
   return {
     scenario: el.simScenario.value,
+    liquid: reference?.liquid || el.simScenario.value,
+    rho_liquid: reference?.densityKgM3 ?? number(el.simRhoLiquid),
+    eta_reference: reference?.viscosityPaS ?? number(el.simEtaReference),
+    temperature_c: number(el.simTemperatureC),
+    reference_temperature_c: reference?.matchedTemperature ?? null,
     radius_mm: number(el.simRadiusMm, 1.5),
     tube_diameter_mm: number(el.simTubeMm, 35),
     liquid_depth_mm: number(el.simDepthMm, 220),
@@ -4955,13 +4901,13 @@ function simulationReferenceFromInputs() {
 function renderSimulationReferenceNote(reference) {
   if (!el.simLiquidNote) return;
   if (!reference) {
-    el.simLiquidNote.textContent = "请选择液体并输入温度，系统会匹配最近温度表值。";
+    el.simLiquidNote.textContent = "系统按输入温度匹配最接近的表值。";
     return;
   }
   const exact = Math.abs(reference.inputTemperature - reference.matchedTemperature) < 0.05;
   const temperatureText = exact
-    ? `${reference.matchedTemperature.toFixed(1)}℃表值`
-    : `输入 ${reference.inputTemperature.toFixed(1)}℃，匹配 ${reference.matchedTemperature.toFixed(1)}℃表值`;
+    ? `取 ${reference.matchedTemperature.toFixed(1)}℃最近表值`
+    : `输入 ${reference.inputTemperature.toFixed(1)}℃，取最近的 ${reference.matchedTemperature.toFixed(1)}℃表值`;
   el.simLiquidNote.textContent = `${reference.liquid} · ${temperatureText} · η=${formatPaS(reference.viscosityPaS)} Pa·s，ρ=${reference.densityKgM3.toFixed(1)} kg/m³ · ${reference.source}`;
 }
 
@@ -4988,25 +4934,30 @@ function resetSimulationDrop() {
 }
 
 function updateSimulationLabels() {
-  el.simReleaseValue.textContent = `${Math.round(number(el.simRelease, 0) * 100)}%`;
-  el.simRefractionValue.textContent = `${Math.round(number(el.simRefraction, 0) * 100)}%`;
-  el.simLightingValue.textContent = `${Math.round(number(el.simLighting, 1) * 100)}%`;
+  if (el.simReleaseValue) el.simReleaseValue.textContent = `${Math.round(number(el.simRelease, 0) * 100)}%`;
+  if (el.simRefractionValue) el.simRefractionValue.textContent = `${Math.round(number(el.simRefraction, 0) * 100)}%`;
+  if (el.simLightingValue) el.simLightingValue.textContent = `${Math.round(number(el.simLighting, 1) * 100)}%`;
   resetSimulationDrop();
 }
 
 function applySimulationPreset() {
-  const preset = simulationPresets[el.simScenario.value] || simulationPresets.standard;
+  const preset = simulationPresets[el.simScenario.value] || simulationPresets["纯甘油"];
   el.simRadiusMm.value = preset.radius;
   el.simTubeMm.value = preset.tube;
   el.simDepthMm.value = preset.depth;
-  el.simRelease.value = preset.release;
-  el.simRefraction.value = preset.damping;
-  el.simLighting.value = preset.stability;
-  if (el.simLiquidNote) el.simLiquidNote.textContent = preset.note;
+  if (el.simRelease) el.simRelease.value = preset.release;
+  if (el.simRefraction) el.simRefraction.value = preset.damping;
+  if (el.simLighting) el.simLighting.value = preset.stability;
   updateSimulationLabels();
+  updateSimulationReference({ resetDrop: false });
 }
 
 async function runSimulation() {
+  const reference = updateSimulationReference({ resetDrop: false });
+  if (!reference) {
+    showToast("请先选择液体并输入有效温度，系统匹配参考粘度后再开始仿真。");
+    return;
+  }
   setButtonLoading(el.runSimulationBtn, true, "仿真中");
   if (el.simulationStatus) el.simulationStatus.textContent = "计算中";
   el.simFeedbackState.textContent = "计算中";
@@ -5034,12 +4985,10 @@ function renderSimulationError(message) {
   el.simFeedbackState.textContent = "无法模拟";
   el.simFeedbackVt.textContent = "vt --";
   el.simVt.textContent = "--";
-  el.simScore.textContent = "--";
   el.simRisk.textContent = "参数无效";
   el.simRe.textContent = "--";
   el.simWallCorrection.textContent = "--";
   el.simReCorrection.textContent = "--";
-  el.simCorrectionTotal.textContent = "--";
   el.simulationRubric.innerHTML = `
     <article class="simulation-advice-row danger">
       <span class="advice-index">!</span>
@@ -5067,19 +5016,16 @@ function renderSimulation(result) {
   const re = finiteNumber(sim.re);
   const wallCorrection = finiteNumber(sim.wall_correction);
   const reynoldsCorrection = finiteNumber(sim.reynolds_correction);
-  const correctionTotal = finiteNumber(sim.correction_total);
   const rubric = Array.isArray(sim.rubric) ? sim.rubric : [];
 
-  if (el.simulationStatus) el.simulationStatus.textContent = "已输出速度";
+  if (el.simulationStatus) el.simulationStatus.textContent = "已输出曲线";
   const terminalVelocityText = `${terminalVelocity.toFixed(4)} m/s`;
   el.simVt.textContent = terminalVelocityText;
   el.simEta.textContent = `${knownEta < 0.01 ? knownEta.toFixed(6) : knownEta.toFixed(3)} Pa·s`;
-  el.simScore.textContent = `${Math.round(riskScore)}`;
   el.simRisk.textContent = sim.risk_label || "已完成";
   el.simRe.textContent = fixed(re, re !== null && re >= 100 ? 1 : 3);
   el.simWallCorrection.textContent = fixed(wallCorrection, 3);
   el.simReCorrection.textContent = fixed(reynoldsCorrection, 3);
-  el.simCorrectionTotal.textContent = fixed(correctionTotal, 3);
   el.simFeedbackState.textContent = sim.risk_label || "已完成";
   el.simFeedbackVt.textContent = `vt ${terminalVelocityText}`;
   el.simulationRubric.innerHTML = rubric.length
@@ -5175,59 +5121,78 @@ function drawSimulationCanvas(timestamp = performance.now()) {
   const run = state.simulation?.run;
   const velocityPoints = (run?.curves?.velocity || []).filter((point) => finiteNumber(point?.t) !== null && finiteNumber(point?.v) !== null);
   const positionPoints = (run?.curves?.position || []).filter((point) => finiteNumber(point?.t) !== null && finiteNumber(point?.y) !== null);
+  const liquidDepthMm = number(el.simDepthMm, null) || finiteNumber(state.simulation?.simulation?.liquid_depth_mm) || 220;
+  const liquidDepthM = Math.max(0.001, liquidDepthMm / 1000);
   if (simulationDrop.active && simulationDrop.startTime === null) simulationDrop.startTime = timestamp;
   const elapsed = simulationDrop.startTime === null ? 0 : Math.max(0, timestamp - simulationDrop.startTime);
   const dropProgress = Math.min(1, elapsed / simulationDrop.duration);
   const easedDropProgress = 1 - Math.pow(1 - dropProgress, 3);
-  const tube = { x: 72, y: 46, w: 212, h: 458 };
+  const tube = {
+    x: Math.round(width * 0.055),
+    y: Math.round(height * 0.12),
+    w: Math.round(width * 0.17),
+    h: Math.round(height * 0.72),
+  };
   const progress = simulationDrop.active ? easedDropProgress : simulationDrop.completed ? 1 : 0;
   const drift = velocityPoints.length
     ? Math.min(0.1, finiteNumber(state.simulation?.simulation?.release_bias, 0) * 0.08)
     : number(el.simRelease, 0) * 0.08;
-  drawSimulationCylinder(tube, progress, drift, timestamp);
+  drawSimulationCylinder(tube, progress, drift, timestamp, liquidDepthMm);
 
-  const plotArea = { x: 330, y: 58, w: 528, h: 438 };
-  const positionPlot = { x: plotArea.x, y: plotArea.y + 30, w: plotArea.w, h: 170 };
-  const velocityPlot = { x: plotArea.x, y: plotArea.y + 254, w: plotArea.w, h: 170 };
+  const plotArea = {
+    x: Math.round(width * 0.315),
+    y: Math.round(height * 0.11),
+    w: Math.round(width * 0.635),
+    h: Math.round(height * 0.74),
+  };
+  const plot = { x: plotArea.x + 86, y: plotArea.y + 44, w: plotArea.w - 106, h: plotArea.h - 102 };
   simCtx.save();
   simCtx.fillStyle = "#20231f";
-  simCtx.font = "900 22px Avenir Next, sans-serif";
+  simCtx.font = "900 20px Avenir Next, sans-serif";
   simCtx.textAlign = "left";
-  simCtx.fillText("s(t) 与 v(t) 科研坐标曲线", plotArea.x, 36);
-  simCtx.fillStyle = "rgba(106, 114, 109, 0.92)";
-  simCtx.font = "800 13px Avenir Next, sans-serif";
-  simCtx.fillText(velocityPoints.length ? "后端已输出位移-时间与速度-时间数据" : "调节液体和容器参数后运行仿真", plotArea.x + 268, 36);
+  const chartMode = state.simulationChartMode === "velocity" ? "velocity" : "position";
+  simCtx.fillText(chartMode === "position" ? "s-t 图" : "v-t 图", plotArea.x, 42);
 
   const previewVelocity = samplePreviewVelocity();
   const drawVelocity = velocityPoints.length ? velocityPoints : previewVelocity;
   const drawPosition = positionPoints.length ? positionPoints : buildPreviewPositionFromVelocity(previewVelocity);
+  const maxPositionValue = Math.max(...drawPosition.map((point) => finiteNumber(point.y, 0)), 0);
+  const maxVelocityValue = Math.max(...drawVelocity.map((point) => finiteNumber(point.v, 0)), 0.001);
+  const simulatedFallTime = finiteNumber(state.simulation?.simulation?.fall_time_s);
+  const previewFallTime = estimatePreviewFallTime(liquidDepthM, maxVelocityValue);
   const maxT = Math.max(
-    1,
+    0.7,
+    simulatedFallTime ?? previewFallTime,
     ...drawVelocity.map((p) => finiteNumber(p.t, 0)),
     ...drawPosition.map((p) => finiteNumber(p.t, 0)),
   );
-  drawSimulationScientificPlot({
-    plot: positionPlot,
-    points: drawPosition,
-    valueKey: "y",
-    maxT,
-    title: "位移-时间曲线",
-    xLabel: "时间 t / s",
-    yLabel: "下落位移 s / m",
-    color: positionPoints.length ? "#327a66" : "rgba(50, 122, 102, 0.48)",
-  });
-  const velocityScale = drawSimulationScientificPlot({
-    plot: velocityPlot,
-    points: drawVelocity,
-    valueKey: "v",
-    maxT,
-    title: "速度-时间曲线",
-    xLabel: "时间 t / s",
-    yLabel: "瞬时速度 v / (m·s⁻¹)",
-    color: velocityPoints.length ? "#a26025" : "rgba(162, 96, 37, 0.48)",
-  });
+  const scale = chartMode === "position"
+    ? drawSimulationScientificPlot({
+        plot,
+        points: drawPosition,
+        valueKey: "y",
+        maxT,
+        minValueOverride: 0,
+        maxValueOverride: Math.max(liquidDepthM, maxPositionValue * 1.08),
+        title: "s-t 图",
+        xLabel: "时间 t / s",
+        yLabel: "下落位移 s / m",
+        color: positionPoints.length ? "#327a66" : "rgba(50, 122, 102, 0.48)",
+      })
+    : drawSimulationScientificPlot({
+        plot,
+        points: drawVelocity,
+        valueKey: "v",
+        maxT,
+        minValueOverride: 0,
+        maxValueOverride: maxVelocityValue * 1.18,
+        title: "v-t 图",
+        xLabel: "时间 t / s",
+        yLabel: "瞬时速度 v / (m·s⁻¹)",
+        color: velocityPoints.length ? "#a26025" : "rgba(162, 96, 37, 0.48)",
+      });
 
-  if (velocityPoints.length) {
+  if (chartMode === "velocity" && velocityPoints.length) {
     const terminalVelocity = finiteNumber(state.simulation?.run?.result?.terminal_velocity);
     if (terminalVelocity === null) {
       simCtx.restore();
@@ -5235,16 +5200,16 @@ function drawSimulationCanvas(timestamp = performance.now()) {
     }
     simCtx.strokeStyle = "rgba(50, 122, 102, 0.44)";
     simCtx.setLineDash([8, 8]);
-    const vtY = velocityScale.yFor(terminalVelocity);
+    const vtY = scale.yFor(terminalVelocity);
     simCtx.beginPath();
-    simCtx.moveTo(velocityPlot.x, vtY);
-    simCtx.lineTo(velocityPlot.x + velocityPlot.w, vtY);
+    simCtx.moveTo(plot.x, vtY);
+    simCtx.lineTo(plot.x + plot.w, vtY);
     simCtx.stroke();
     simCtx.setLineDash([]);
     simCtx.fillStyle = "#235b4c";
     simCtx.font = "900 12px ui-monospace, monospace";
     simCtx.textAlign = "right";
-    simCtx.fillText(`v_t = ${terminalVelocity.toFixed(4)} m·s⁻¹`, velocityPlot.x + velocityPlot.w - 4, vtY - 8);
+    simCtx.fillText(`v_t = ${terminalVelocity.toFixed(4)} m·s⁻¹`, plot.x + plot.w - 4, vtY - 8);
   }
   simCtx.restore();
 }
@@ -5341,9 +5306,9 @@ function estimatePreviewFallTime(liquidDepthM, terminalVelocity) {
 }
 
 function samplePreviewVelocity() {
-  const release = number(el.simRelease);
-  const damping = number(el.simRefraction);
-  const stability = number(el.simLighting);
+  const release = number(el.simRelease, 0);
+  const damping = number(el.simRefraction, 0);
+  const stability = number(el.simLighting, 1);
   const terminal = 0.075 + (1 - damping) * 0.035;
   const tau = 0.22 + release * 0.12;
   return Array.from({ length: 70 }, (_, index) => {
@@ -5574,29 +5539,6 @@ function renderRecordsTable() {
   syncRecordSelectionControls();
 }
 
-function compactNumberRanges(values) {
-  const sorted = [...new Set(values)]
-    .map((value) => Number(value))
-    .filter((value) => Number.isInteger(value))
-    .sort((a, b) => a - b);
-  if (!sorted.length) return "";
-  const ranges = [];
-  let start = sorted[0];
-  let previous = sorted[0];
-  for (let index = 1; index < sorted.length; index += 1) {
-    const current = sorted[index];
-    if (current === previous + 1) {
-      previous = current;
-      continue;
-    }
-    ranges.push(start === previous ? String(start) : `${start}-${previous}`);
-    start = current;
-    previous = current;
-  }
-  ranges.push(start === previous ? String(start) : `${start}-${previous}`);
-  return ranges.join("、");
-}
-
 function renderRecordsSummary(rows) {
   if (!el.recordsSummary) return;
   const records = Array.isArray(rows) ? rows : [];
@@ -5621,18 +5563,7 @@ function renderRecordsSummary(rows) {
   const ids = records.map((row) => Number(row.id)).filter((id) => Number.isInteger(id));
   const minId = Math.min(...ids);
   const maxId = Math.max(...ids);
-  const idSet = new Set(ids);
-  const missingInRange = [];
-  for (let id = minId; id <= maxId; id += 1) {
-    if (!idSet.has(id)) missingInRange.push(id);
-  }
-  const missingBefore = minId > 1 ? Array.from({ length: minId - 1 }, (_, index) => index + 1) : [];
-  const missingText = compactNumberRanges([...missingBefore, ...missingInRange]);
   const videoCount = records.filter((row) => row.has_video).length;
-  const measuredCount = records.filter((row) => row.has_student_measurement).length;
-  const note = missingText
-    ? `已加载当前接口返回的全部记录；但当前数据库缺少 ID ${missingText}，这些记录不在本地 SQLite 文件中。`
-    : "已加载当前接口返回的全部记录，未发现 ID 缺号。";
   el.recordsSummary.innerHTML = `
     <article>
       <span>当前库记录</span>
@@ -5646,7 +5577,6 @@ function renderRecordsSummary(rows) {
       <span>录像归档</span>
       <strong>${videoCount}/${records.length}</strong>
     </article>
-    <p>${escapeHtml(note)} 已完成人工测量 ${measuredCount} 条。</p>
   `;
 }
 
@@ -6444,9 +6374,6 @@ function bind() {
     input?.addEventListener("input", updateNonlinearCorrectionStatus);
     input?.addEventListener("change", updateNonlinearCorrectionStatus);
   });
-  document.querySelectorAll("[data-correction-mode]").forEach((button) => {
-    button.addEventListener("click", () => setCorrectionMode(button.dataset.correctionMode));
-  });
   document.querySelectorAll("[data-source]").forEach((button) => {
     button.addEventListener("click", () => setDataSource(button.dataset.source));
   });
@@ -6501,14 +6428,24 @@ function bind() {
       switchView(button.dataset.goView);
     });
   });
-  [el.simRelease, el.simRefraction, el.simLighting, el.simRadiusMm, el.simTubeMm, el.simDepthMm].forEach((input) => {
+  [el.simRelease, el.simRefraction, el.simLighting, el.simRadiusMm, el.simTubeMm, el.simDepthMm].filter(Boolean).forEach((input) => {
     input.addEventListener("input", () => {
       updateSimulationLabels();
       if (!simulationDrop.active) drawSimulationCanvas();
     });
   });
   el.simScenario.addEventListener("change", applySimulationPreset);
+  el.simTemperatureC?.addEventListener("input", () => updateSimulationReference());
   el.runSimulationBtn.addEventListener("click", runSimulation);
+  document.querySelectorAll("[data-sim-chart]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.simulationChartMode = button.dataset.simChart === "velocity" ? "velocity" : "position";
+      document.querySelectorAll("[data-sim-chart]").forEach((item) => {
+        item.classList.toggle("active", item === button);
+      });
+      drawSimulationCanvas();
+    });
+  });
   el.sendSimulationToWorkbenchBtn.addEventListener("click", sendSimulationToWorkbench);
 }
 

@@ -675,75 +675,320 @@ def supabase_latest_run() -> dict | None:
 
 
 def build_report_text(run: dict) -> str:
-    params = run["params"]
-    result = run["result"]
-    student = run["student"]
-    diagnostics = run["diagnostics"]
+    params = run.get("params") or {}
+    result = run.get("result") or {}
+    student = run.get("student") or {}
+    diagnostics = run.get("diagnostics") or []
     quality = run.get("quality", {})
     preprocessing = quality.get("preprocessing", {})
+    segment = run.get("segment") or {}
+    frames = run.get("frames") or []
+    curves = run.get("curves") or {}
+    velocity_curve = curves.get("velocity") or []
+    position_curve = curves.get("position") or []
+    motion_phases = run.get("motion_phases") or []
     score = student.get("score")
     v_error = student.get("v_error")
     eta_error = student.get("eta_error")
-    ideal_viscosity = result.get("ideal_viscosity", result["viscosity"])
+    terminal_velocity = result.get("terminal_velocity")
+    corrected_viscosity = result.get("viscosity")
+    ideal_viscosity = result.get("ideal_viscosity", corrected_viscosity)
+    relative_uncertainty = result.get("relative_uncertainty")
     report_time = run.get("created_at") or datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    radius_mm = report_float(params.get("radius_mm"))
+    tube_diameter_mm = report_float(params.get("tube_diameter_mm"))
+    tube_ratio = (2 * radius_mm / tube_diameter_mm) if radius_mm and tube_diameter_mm else None
+    frame_count = len(frames) or len(position_curve)
+    velocity_count = len(velocity_curve)
+    duration_s = report_duration(frames, position_curve)
+    sampling_hz = ((frame_count - 1) / duration_s) if duration_s and frame_count > 1 else None
+    total_drop_m = report_total_drop(frames, position_curve)
+    segment_summary = describe_segment(segment, velocity_curve)
+    transient = result.get("transient") or {}
+
+    conclusion = report_conclusion(score, v_error, eta_error, result, quality)
     score_basis = [
         ("人工终端速度相对偏差", format_percent(v_error), "偏差越小，说明人工计时或人工选段越接近 AI 拟合结果。"),
         ("人工粘滞系数相对偏差", format_percent(eta_error), "偏差越小，说明人工理想公式计算结果与 AI 理想公式参考值越一致。"),
-        ("AI 拟合 R²", f"{float(result['r2']):.4f}", "越接近 1，匀速段线性越好。"),
+        ("AI 拟合 R²", format_report_value(result.get("r2"), "", 4), "越接近 1，匀速段线性越好。"),
         ("综合评分", format_report_value(score, "分", 0), "由人工偏差与 AI 拟合质量共同决定。"),
     ]
     lines = [
         "# 基于AI视觉的落球法液体粘滞系数智能测量系统实验报告",
         "",
-        "## 1. 基本信息",
-        "| 项目 | 数值 |",
-        "|---|---|",
-        f"| 记录ID | {run.get('id', '-')} |",
-        f"| 日期时间 | {report_time} |",
-        f"| 液体种类 | {params['liquid']} |",
-        f"| 液体温度 | {params['temperature_c']} ℃ |",
-        f"| 液体密度 | {params['rho_liquid']} kg/m³ |",
-        f"| 小球半径 | {params['radius_mm']} mm |",
-        f"| 小球密度 | {params['rho_ball']} kg/m³ |",
-        f"| 量筒内径 | {params['tube_diameter_mm']} mm |",
-        f"| 液体深度 | {params.get('liquid_depth_mm', '-')} mm |",
-        f"| 数据来源 | {run.get('source', '-')} |",
+        "本报告由平台根据本次实验的视觉追踪轨迹、人工填写结果、物理修正模型和质量诊断自动生成。报告用于帮助学生复盘实验过程，也可作为教师检查原始数据、选段质量、计算依据和误差来源的辅助材料。",
         "",
-        "## 2. 数据对比表",
+        "## 1. 实验目的与结论摘要",
+        "| 项目 | 内容 |",
+        "|---|---|",
+        report_row("实验目的", "利用落球法测量待测液体粘滞系数，并比较人工理想公式计算结果与 AI 视觉测量结果。"),
+        report_row("核心思路", "通过摄像头获得小球下落轨迹，经标定后转换为真实位移，识别稳定速度段，计算终端速度 vt，再由 Stokes 公式得到粘滞系数。"),
+        report_row("本次结论", conclusion),
+        report_row("评分口径", "学生填写的速度和粘滞系数与 AI 理想公式参考值比较；修正后粘滞系数用于实验复盘，不直接作为学生评分基准。"),
+        "",
+        "## 2. 实验记录与仪器参数",
+        "| 项目 | 数值 | 说明 |",
+        "|---|---:|---|",
+        report_row("记录ID", run.get("id", "-"), "平台自动保存的实验编号。"),
+        report_row("日期时间", report_time, "本次记录生成或保存时间。"),
+        report_row("数据来源", source_label(run.get("source")), "实时追踪、视频追踪或仿真记录。"),
+        report_row("液体种类", params.get("liquid", "-"), "由学生在 AI 实验页面选择或填写。"),
+        report_row("液体温度", format_report_value(params.get("temperature_c"), "℃", 1), "用于匹配最接近温度的参考粘度数据。"),
+        report_row("液体密度", format_report_value(params.get("rho_liquid"), "kg/m³", 1), "参与浮力项计算。"),
+        report_row("小球半径 r", format_report_value(params.get("radius_mm"), "mm", 3), "平台计算时使用半径；若人工测得直径，应先除以 2。"),
+        report_row("小球直径 2r", format_report_value(2 * radius_mm if radius_mm is not None else None, "mm", 3), "与量筒内径共同决定壁效应强弱。"),
+        report_row("小球密度", format_report_value(params.get("rho_ball"), "kg/m³", 1), "默认按钢球密度，可按实际材料修正。"),
+        report_row("量筒内径 D", format_report_value(params.get("tube_diameter_mm"), "mm", 2), "注意这里是内径，不是半径。"),
+        report_row("液体深度 H", format_report_value(params.get("liquid_depth_mm"), "mm", 1), "参与壁面深度修正和实验可行性判断。"),
+        report_row("小球直径/量筒内径 2r/D", format_report_value(tube_ratio, "", 4), "越小越接近无限大容器假设；过大时壁效应明显。"),
+        "",
+        "## 3. 实验原理与计算公式",
+        "| 计算环节 | 公式或方法 | 在本平台中的作用 |",
+        "|---|---|---|",
+        report_row("终端速度", "vt 由稳定平台段位移-时间曲线斜率得到", "AI 先识别候选匀速段，再对该段 y-t 数据做稳健线性拟合。"),
+        report_row("理想 Stokes 公式", "η0 = 2r²(ρ球-ρ液)g / (9vt)", "这是学生人工计算和平台评分采用的理想粘滞系数。"),
+        report_row("壁效应修正", "K壁 = (1 + 2.4r/R)(1 + 3.3r/H)", "R 为量筒半径，H 为液体深度；用于复盘液体边界对速度的影响。"),
+        report_row("雷诺数", "Re = ρ液 vt 2r / η", "判断 Stokes 流动条件是否满足；Re 越小，低雷诺数假设越可靠。"),
+        report_row("雷诺数二级修正", "KRe = 1 + 3Re/16 - 19Re²/1080", "当 Re 在适用范围内时参与迭代修正；Re 过高时平台会提示模型风险。"),
+        report_row("修正后粘滞系数", "η = η0 / (K壁 KRe)", "用于 AI 实验复盘和物理模型解释，不替代学生理想公式评分。"),
+        report_row("合成不确定度", "uη/η 按直径、时间、距离、容器、液深和标定点误差传播", "平台页面中的不确定度卡片用于展示 η ± U；报告同时记录 AI 轨迹拟合相对不确定度。"),
+        "",
+        "## 4. AI视觉测量流程",
+        "| 步骤 | 平台处理 | 质量关注点 |",
+        "|---|---|---|",
+        report_row("1. 获取画面", "连接实时画面或载入实验视频，画面中应尽量包含完整下落区间。", "曝光、对焦、背景对比度会直接影响小球识别。"),
+        report_row("2. 标定尺度", "使用标定棒上的已知长度，把像素坐标转换为实际位移。", "鼠标标点误差会进入距离标定不确定度。"),
+        report_row("3. 追踪小球", "逐帧检测小球中心，形成 t-y 轨迹。", "若出现反光、遮挡、气泡或小球偏离量筒中心，轨迹会抖动。"),
+        report_row("4. 清洗轨迹", "剔除无效点和明显异常点，对保留点估计速度。", "异常点过多说明检测条件需要重新调整。"),
+        report_row("5. 识别平台段", "扫描多个候选时间窗口，综合速度离散度、斜率、置信度和位置因素选择稳定区间。", "平台段应尽量靠后且速度波动小。"),
+        report_row("6. 计算与评分", "输出 vt、η0、修正η、Re、K壁、KRe，并与学生填写结果比较。", "评分只使用 AI 理想参考值与学生理想公式结果的偏差。"),
+        "",
+        "## 5. 轨迹数据质量",
+        "| 指标 | 本次结果 | 解读 |",
+        "|---|---:|---|",
+        report_row("有效位置点数", frame_count, "用于拟合 y-t 曲线的轨迹点数量。"),
+        report_row("速度采样点数", velocity_count, "由相邻或跨帧位置点估计得到。"),
+        report_row("记录时长", format_report_value(duration_s, "s", 3), "覆盖下落过程越完整，越有利于识别加速段和匀速段。"),
+        report_row("总下落距离", format_report_value(total_drop_m, "m", 4), "由轨迹起止位置估算，仅作为覆盖范围参考。"),
+        report_row("估算采样频率", format_report_value(sampling_hz, "Hz", 1), "采样频率越高，速度曲线细节越充分，但过高会增加曲线刷新压力。"),
+        report_row("中位采样间隔", format_report_value(preprocessing.get("median_dt"), "s", 4), "反映帧间时间是否稳定。"),
+        report_row("无效点数量", int(preprocessing.get("dropped_points", 0) or 0), "无法形成可靠位置或时间戳的点。"),
+        report_row("异常点数量", int(preprocessing.get("outlier_points", 0) or 0), "被平台识别为明显偏离轨迹趋势的点。"),
+        report_row("拟合方法", quality.get("fit_method", "-"), "平台根据数据质量选择稳健拟合方法。"),
+        report_row("拟合点数", quality.get("fit_point_count", "-"), "最终用于终端速度线性拟合的点数。"),
+        report_row("拟合 RMSE", format_report_value(quality.get("fit_rmse"), "m", 6), "位置拟合残差，越小表示线性平台段越稳定。"),
+        report_row("斜率标准误", format_report_value(quality.get("terminal_velocity_stderr"), "m/s", 6), "终端速度拟合不确定性的一个来源。"),
+        report_row("平均追踪置信度", format_percent(result.get("tracking_confidence")), "越高说明视觉识别越可靠。"),
+        "",
+        "## 6. 匀速段与运动阶段分析",
+        "平台不会简单地把中间一段默认视为匀速段，而是在速度曲线中扫描多个候选窗口。候选窗口会同时比较速度波动、整体斜率、追踪置信度、区间长度以及位置是否过早；因此最终选段可能位于中后段，也可能在后段受到底部反光、出视野或气泡影响时避开末尾。",
+        "",
+        "| 匀速段指标 | 本次结果 | 说明 |",
+        "|---|---:|---|",
+        report_row("速度点范围", segment_summary["index_range"], "平台选中的速度曲线索引范围。"),
+        report_row("时间范围", segment_summary["time_range"], "用于终端速度拟合的主要时间区间。"),
+        report_row("持续时间", format_report_value(segment_summary["duration_s"], "s", 3), "区间越长，通常越有利于降低偶然波动。"),
+        report_row("窗口点数", segment.get("window_size", "-"), "候选平台段包含的速度点数量。"),
+        report_row("速度离散度 CV", format_report_value(segment.get("cv"), "", 4), "越低越接近匀速；过高时应复核追踪和选段。"),
+        report_row("选段得分", format_report_value(segment.get("score"), "", 4), "平台内部用于排序候选平台段的综合指标，越低越稳定。"),
+        report_row("选段平均置信度", format_percent(segment.get("avg_confidence")), "该平台段内小球识别的平均可靠性。"),
+        report_row("选段中心位置", format_percent(segment.get("center_ratio")), "反映平台段处于整段下落曲线的大致位置。"),
+        "",
+        "| 阶段 | 趋势 | 时间范围 | 持续时间 | 位移 | 速度变化 | 离散度 | 说明 |",
+        "|---|---|---:|---:|---:|---:|---:|---|",
+    ]
+    lines.extend(report_motion_phase_rows(motion_phases))
+    lines.extend([
+        "",
+        "## 7. 结果对比与评分",
         "| 指标 | 人工测量值 | AI理想参考值 | 相对偏差 | 备注 |",
         "|---|---:|---:|---:|---|",
-        report_compare_row("终端速度 vt", student.get("student_v"), result["terminal_velocity"], "m/s", student.get("v_error")),
+        report_compare_row("终端速度 vt", student.get("student_v"), terminal_velocity, "m/s", student.get("v_error")),
         report_compare_row("理想公式粘滞系数 η₀", student.get("student_eta"), ideal_viscosity, "Pa·s", student.get("eta_error")),
-        f"| 修正后粘滞系数 η | - | {format_report_value(result['viscosity'], 'Pa·s', 6)} | - | 计入壁效应和 Re 修正后的复盘参考值，不用于学生理想公式评分 |",
-        f"| 线性拟合 R² | - | {float(result['r2']):.4f} | - | 匀速段线性拟合质量 |",
-        f"| Re | - | {float(result['re']):.4f} | - | Stokes 适用条件判据 |",
-        f"| 壁效应修正因子 K壁 | - | {float(result['wall_correction']):.4f} | - | 由小球半径、量筒内径和液体深度决定 |",
-        f"| 追踪平均置信度 | - | {float(result['tracking_confidence']) * 100:.1f}% | - | AI 视觉追踪质量 |",
+        report_row("修正后粘滞系数 η", "-", format_report_value(corrected_viscosity, "Pa·s", 6), "-", "计入壁效应和 Re 修正后的复盘参考值，不用于学生理想公式评分"),
+        report_row("参考表值 η表", "-", format_report_value(params.get("eta_reference"), "Pa·s", 6), "-", "由液体和温度匹配得到的参考值，仅作为实验合理性对照"),
+        report_row("线性拟合 R²", "-", format_report_value(result.get("r2"), "", 4), "-", "匀速段线性拟合质量"),
+        report_row("Re", "-", format_report_value(result.get("re"), "", 4), "-", "Stokes 适用条件判据"),
+        report_row("壁效应修正因子 K壁", "-", format_report_value(result.get("wall_correction"), "", 4), "-", "由小球半径、量筒内径和液体深度决定"),
+        report_row("雷诺数修正因子 KRe", "-", format_report_value(result.get("reynolds_correction"), "", 4), "-", "Re 适用范围内参与二级修正"),
+        report_row("总修正因子 K壁KRe", "-", format_report_value(result.get("correction_total"), "", 4), "-", "修正后 η = η0 / 总修正因子"),
+        report_row("AI相对不确定度", "-", format_percent(relative_uncertainty), "-", "由轨迹拟合波动等因素估计，用于报告复盘"),
+        report_row("追踪平均置信度", "-", format_percent(result.get("tracking_confidence")), "-", "AI 视觉追踪质量"),
         "",
-        "## 3. 评分结果以及依据",
+        "## 8. 评分结果以及依据",
         "| 项目 | 结果 | 评分依据 |",
         "|---|---:|---|",
-    ]
+    ])
     lines.extend(f"| {label} | {value} | {basis} |" for label, value, basis in score_basis)
     lines.extend([
         "",
-        "## 4. 误差分析",
+        "评分公式说明：综合评分会扣除人工终端速度偏差、人工理想粘滞系数偏差以及 AI 匀速段线性拟合不足带来的影响。平台评分上限和下限做了限制，目的是避免一次极端误差让学生失去复盘价值，同时保留区分度。",
+        "",
+        "## 9. 瞬态拟合复核",
+        "| 项目 | 结果 | 说明 |",
+        "|---|---:|---|",
+        report_row("是否可用", "可用" if transient.get("available") else "不可用", "入液加速或减速段对噪声、初始释放和标定误差非常敏感，因此只作为探索性复核，不参与主评分。"),
+        report_row("瞬态粘滞系数", format_report_value(transient.get("viscosity"), "Pa·s", 6), "若与匀速段结果差异过大，应以匀速段主结果为准。"),
+        report_row("瞬态拟合 R²", format_report_value(transient.get("r2"), "", 4), "越接近 1，说明指数趋近模型越能解释入液初段速度变化。"),
+        report_row("时间常数 τ", format_report_value(transient.get("tau"), "s", 4), "反映速度接近终端速度的快慢。"),
+        report_row("状态说明", transient.get("reason") or transient.get("message") or "本项为辅助分析。", "用于判断为何可用或不可用。"),
+        "",
+        "## 10. 不确定度与误差来源",
         "| 类型 | 指标或现象 | 分析 |",
         "|---|---|---|",
         f"| 人工测量误差 | vt 偏差 {format_percent(v_error)}；η₀ 偏差 {format_percent(eta_error)} | 若偏差较大，优先检查人工计时、人工选段、读数反应延迟和理想公式单位换算。 |",
-        f"| AI拟合误差 | R²={float(result['r2']):.4f}；匀速段速度离散度={float(quality.get('uniform_segment_cv', 0)):.4f} | R² 偏低或速度离散度偏大时，说明匀速段不稳定或轨迹噪声较大。 |",
-        f"| 视觉追踪误差 | 平均置信度 {float(result['tracking_confidence']) * 100:.1f}%；降权坏点 {int(preprocessing.get('outlier_points', 0) or 0)}；无效点 {int(preprocessing.get('dropped_points', 0) or 0)} | 气泡、划痕、阴影、曝光过高或检测区域过大都可能造成误识别。 |",
-        f"| 物理模型误差 | Re={float(result['re']):.4f}；K壁={float(result['wall_correction']):.4f} | Re 偏高或壁效应修正较大时，Stokes 条件偏离更明显。 |",
+        report_row("AI拟合误差", f"R²={format_report_value(result.get('r2'), '', 4)}；匀速段 CV={format_report_value(quality.get('uniform_segment_cv'), '', 4)}", "R² 偏低或速度离散度偏大时，说明匀速段不稳定或轨迹噪声较大。"),
+        report_row("视觉追踪误差", f"平均置信度 {format_percent(result.get('tracking_confidence'))}；异常点 {int(preprocessing.get('outlier_points', 0) or 0)}；无效点 {int(preprocessing.get('dropped_points', 0) or 0)}", "气泡、划痕、阴影、曝光过高、背景过暗或检测区域过大都可能造成误识别。"),
+        report_row("标定误差", "标定棒点选误差会改变像素到真实距离的换算比例", "这是 AI 改进测量引入的主要附加不确定度之一，建议放大标定画面后再点选标记。"),
+        report_row("对焦与景深误差", "焦点偏离小球运动平面会使边缘模糊", "应锁定曝光和对焦，使小球所在平面清晰；必要时提高照明和背景对比度。"),
+        report_row("选段范围误差", f"平台段持续 {format_report_value(segment_summary['duration_s'], 's', 3)}", "选段过短或过早会放大小球尚未稳定、局部反光或速度抖动带来的影响。"),
+        report_row("物理模型误差", f"Re={format_report_value(result.get('re'), '', 4)}；K壁={format_report_value(result.get('wall_correction'), '', 4)}", "Re 偏高或壁效应修正较大时，Stokes 条件偏离更明显。"),
         "",
-        "## 5. 改进建议",
+        "## 11. 平台诊断与改进建议",
         "| 等级 | 诊断项 | 建议 |",
         "|---|---|---|",
     ])
     for item in diagnostics:
-        lines.append(f"| {item['level']} | {item['title']} | {item['message']} |")
+        lines.append(report_row(item.get("level", "-"), item.get("title", "-"), item.get("message", "-")))
+    lines.extend([
+        "",
+        "## 12. 报告结论",
+        conclusion,
+        "",
+        "建议保存本报告、原始视频和实验记录编号，便于后续对同一液体在不同温度、不同小球半径或不同标定方式下进行横向比较。若发现末端速度明显下降，应优先检查量筒底部反光、ROI边界、标定是否覆盖整个观察区间以及小球是否偏离量筒中心。",
+    ])
     lines.append("")
     lines.append("说明：评分报告用于辅助复盘，不替代原始实验记录。最终结论仍应结合释放质量、标定质量、背光条件、人工测量过程和 Stokes 适用条件综合判断。")
     return "\n".join(lines)
+
+
+def report_float(value):
+    if value is None or value == "":
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def report_row(*cells) -> str:
+    return "| " + " | ".join(report_cell(cell) for cell in cells) + " |"
+
+
+def report_cell(value) -> str:
+    if value is None:
+        return "未填写"
+    text = str(value).replace("\n", " ").strip()
+    return text.replace("|", "／") if text else "-"
+
+
+def source_label(source) -> str:
+    labels = {
+        "simulation": "虚拟仿真",
+        "camera": "摄像机视频",
+        "video": "摄像机视频",
+        "csv": "轨迹CSV",
+        "live": "实时追踪",
+        "realtime": "实时追踪",
+        "live_frame_preview": "实时画面预览",
+    }
+    key = str(source or "").strip()
+    return labels.get(key, key or "-")
+
+
+def report_duration(frames: list[dict], position_curve: list[dict]) -> float | None:
+    points = frames or position_curve
+    if len(points) < 2:
+        return None
+    start = report_float(points[0].get("t"))
+    end = report_float(points[-1].get("t"))
+    if start is None or end is None or end <= start:
+        return None
+    return end - start
+
+
+def report_total_drop(frames: list[dict], position_curve: list[dict]) -> float | None:
+    points = frames or position_curve
+    if len(points) < 2:
+        return None
+    start = report_float(points[0].get("corrected_y", points[0].get("y")))
+    end = report_float(points[-1].get("corrected_y", points[-1].get("y")))
+    if start is None or end is None:
+        return None
+    return end - start
+
+
+def describe_segment(segment: dict, velocity_curve: list[dict]) -> dict:
+    start = int(segment.get("start", 0) or 0)
+    end = int(segment.get("end", start) or start)
+    if not velocity_curve:
+        return {"index_range": "-", "time_range": "-", "duration_s": None}
+    max_index = max(0, len(velocity_curve) - 1)
+    start = max(0, min(start, max_index))
+    end = max(start, min(end, max_index))
+    start_t = report_float(velocity_curve[start].get("t"))
+    end_t = report_float(velocity_curve[end].get("t"))
+    duration = (end_t - start_t) if start_t is not None and end_t is not None and end_t >= start_t else None
+    return {
+        "index_range": f"{start} - {end}",
+        "time_range": f"{format_report_value(start_t, 's', 3)} 至 {format_report_value(end_t, 's', 3)}",
+        "duration_s": duration,
+    }
+
+
+def report_motion_phase_rows(phases: list[dict]) -> list[str]:
+    if not phases:
+        return [report_row("未生成", "-", "-", "-", "-", "-", "-", "本次记录缺少足够速度点，暂未形成阶段判断。")]
+    rows = []
+    for phase in phases:
+        start_t = phase.get("start_time")
+        end_t = phase.get("end_time")
+        rows.append(
+            report_row(
+                phase.get("label", "-"),
+                phase_trend_label(phase.get("trend")),
+                f"{format_report_value(start_t, 's', 3)} 至 {format_report_value(end_t, 's', 3)}",
+                format_report_value(phase.get("time_s"), "s", 3),
+                format_report_value(phase.get("distance_m"), "m", 4),
+                format_report_value(phase.get("delta_v"), "m/s", 4),
+                format_report_value(phase.get("cv"), "", 4),
+                phase.get("description", "-"),
+            )
+        )
+    return rows
+
+
+def phase_trend_label(trend) -> str:
+    return {
+        "accelerating": "加速",
+        "decelerating": "减速",
+        "stable": "稳定",
+    }.get(str(trend or ""), str(trend or "-"))
+
+
+def report_conclusion(score, v_error, eta_error, result: dict, quality: dict) -> str:
+    score_value = report_float(score)
+    r2 = report_float(result.get("r2"))
+    confidence = report_float(result.get("tracking_confidence"))
+    cv = report_float(quality.get("uniform_segment_cv"))
+    fragments = []
+    if score_value is not None:
+        if score_value >= 90:
+            fragments.append("人工测量结果与 AI 理想参考结果高度一致")
+        elif score_value >= 75:
+            fragments.append("人工测量结果与 AI 参考结果基本一致，但仍有可复核空间")
+        else:
+            fragments.append("人工结果与 AI 参考结果偏差较明显，建议复查人工选段、计时和单位换算")
+    if r2 is not None:
+        fragments.append(f"匀速段线性拟合 R²={r2:.4f}")
+    if confidence is not None:
+        fragments.append(f"视觉平均置信度为 {confidence * 100:.1f}%")
+    if cv is not None:
+        fragments.append(f"平台段速度离散度 CV={cv:.4f}")
+    if v_error is not None and eta_error is not None:
+        fragments.append(f"速度偏差 {float(v_error) * 100:.2f}%，理想粘滞系数偏差 {float(eta_error) * 100:.2f}%")
+    return "；".join(fragments) + "。" if fragments else "本次报告已生成，但缺少部分评分或拟合字段，建议先确认实验记录是否完整。"
 
 
 def report_compare_row(label: str, student_value, ai_value, unit: str, relative_error) -> str:

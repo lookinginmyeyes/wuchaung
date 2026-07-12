@@ -2534,43 +2534,6 @@ body.calibration-fullscreen-active {
   justify-content: flex-end;
 }
 
-.correction-mode-switch {
-  display: inline-grid;
-  grid-template-columns: repeat(2, minmax(112px, 1fr));
-  gap: 4px;
-  min-height: 44px;
-  padding: 4px;
-  border-radius: 14px;
-  background: rgba(236, 242, 238, 0.92);
-  border: 1px solid rgba(217, 221, 213, 0.92);
-}
-
-.correction-mode-switch button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 34px;
-  padding: 8px 12px;
-  border: 0;
-  border-radius: 10px;
-  color: rgba(32, 35, 31, 0.68);
-  background: transparent;
-  font-size: 13px;
-  font-weight: 940;
-  cursor: pointer;
-  transition: transform 0.2s ease, background 0.2s ease, color 0.2s ease;
-}
-
-.correction-mode-switch button.active {
-  color: var(--ink);
-  background: rgba(255, 255, 255, 0.96);
-  box-shadow: 0 8px 20px -16px rgba(32, 35, 31, 0.42);
-}
-
-.correction-mode-switch button:active {
-  transform: translateY(1px);
-}
-
 .switch-row {
   display: inline-flex;
   grid-auto-flow: column;
@@ -3095,9 +3058,11 @@ input[type="range"]:focus-visible {
 }
 
 .simulation-layout {
-  grid-template-columns: minmax(270px, 0.34fr) minmax(520px, 1fr) minmax(280px, 0.36fr);
-  grid-template-areas: "sim-controls sim-scene sim-feedback";
-  gap: clamp(14px, 1.4vw, 22px);
+  grid-template-columns: minmax(330px, 0.42fr) minmax(0, 1fr);
+  grid-template-areas:
+    "sim-controls sim-scene"
+    "sim-feedback sim-scene";
+  gap: clamp(14px, 1.4vw, 20px);
   align-items: start;
 }
 
@@ -4566,33 +4531,10 @@ input[type="range"]:focus-visible {
   min-height: 46px;
 }
 
-.simulation-control-panel,
-.simulation-feedback-panel,
-.simulation-scene-panel {
-  min-width: 0;
-}
-
-.simulation-control-panel,
-.simulation-feedback-panel {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.simulation-control-panel .section-title {
-  display: block;
-}
-
-.simulation-control-panel .section-title h2 {
-  font-size: clamp(18px, 1.35vw, 22px);
-  line-height: 1.14;
-  white-space: nowrap;
-}
-
 .simulation-advice-head {
   display: grid;
-  grid-template-columns: minmax(104px, 1fr) minmax(132px, 0.36fr);
-  gap: 14px;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
   align-items: start;
 }
 
@@ -4609,11 +4551,13 @@ input[type="range"]:focus-visible {
 }
 
 .simulation-run-module {
-  justify-self: end;
+  justify-self: stretch;
   display: grid;
   align-content: start;
   gap: 6px;
   width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
   min-height: 96px;
   padding: 12px;
   border-radius: 14px;
@@ -4639,10 +4583,12 @@ input[type="range"]:focus-visible {
 }
 
 .simulation-run-module strong {
+  min-width: 0;
   color: var(--accent-dark);
-  font-size: 18px;
+  font-size: clamp(16px, 1.35vw, 18px);
   font-weight: 950;
   line-height: 1.1;
+  overflow-wrap: anywhere;
 }
 
 .simulation-run-module small {
@@ -4687,16 +4633,55 @@ input[type="range"]:focus-visible {
 
 #simulationCanvas {
   width: 100%;
-  margin-top: 14px;
-  aspect-ratio: 1.61 / 1;
-  border-radius: 16px;
+  margin-top: 12px;
+  aspect-ratio: 1.86 / 1;
+  border-radius: 18px;
   border: 1px solid rgba(217, 221, 213, 0.92);
   background: #fbfcfa;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9);
 }
 
-.simulation-metrics .metric strong {
-  font-size: clamp(18px, 1.45vw, 25px);
+.simulation-chart-tabs {
+  margin-top: 0;
+  justify-content: flex-start;
+}
+
+.simulation-chart-tabs button {
+  min-height: 38px;
+  padding: 8px 14px;
+}
+
+.simulation-result-ribbon {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 10px;
+  padding: 8px;
+  border: 1px solid rgba(217, 221, 213, 0.9);
+  border-radius: 16px;
+  background: rgba(247, 249, 246, 0.78);
+}
+
+.simulation-result-ribbon .metric {
+  min-height: 70px;
+  padding: 10px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.86);
+}
+
+.simulation-result-ribbon .metric::after {
+  display: none;
+}
+
+.simulation-result-ribbon .metric span {
+  margin-bottom: 7px;
+  font-size: 11px;
+}
+
+.simulation-result-ribbon .metric strong {
+  margin-bottom: 0;
+  font-size: clamp(14px, 1.08vw, 19px);
+  line-height: 1.15;
 }
 
 .simulation-advice-list {
@@ -4808,7 +4793,7 @@ input[type="range"]:focus-visible {
 
 @media (max-width: 1240px) {
   .simulation-layout {
-    grid-template-columns: minmax(260px, 0.38fr) minmax(0, 1fr);
+    grid-template-columns: minmax(320px, 0.42fr) minmax(0, 1fr);
     grid-template-areas:
       "sim-controls sim-scene"
       "sim-feedback sim-scene";
@@ -4832,8 +4817,8 @@ input[type="range"]:focus-visible {
     grid-template-columns: 1fr;
     grid-template-areas:
       "sim-controls"
-      "sim-feedback"
-      "sim-scene";
+      "sim-scene"
+      "sim-feedback";
     gap: 14px;
   }
 
@@ -4849,13 +4834,13 @@ input[type="range"]:focus-visible {
     border-radius: 14px;
   }
 
-  .simulation-metrics {
+  .simulation-result-ribbon {
     grid-template-columns: 1fr;
     gap: 9px;
     margin-top: 12px;
   }
 
-  .simulation-metrics .metric {
+  .simulation-result-ribbon .metric {
     min-height: 86px;
     padding: 13px;
   }
@@ -4870,8 +4855,8 @@ input[type="range"]:focus-visible {
   }
 
   .simulation-run-module {
-    grid-template-columns: minmax(92px, auto) minmax(0, 1fr) auto;
-    align-items: center;
+    grid-template-columns: 1fr;
+    align-items: start;
     justify-self: stretch;
     min-height: 0;
     padding: 10px;
@@ -7742,6 +7727,21 @@ svg {
     min-height: 260px;
   }
 
+  .simulation-layout {
+    grid-template-columns: minmax(320px, 0.42fr) minmax(0, 1fr);
+    grid-template-areas:
+      "sim-controls sim-scene"
+      "sim-feedback sim-scene";
+  }
+
+  .simulation-advice-head {
+    grid-template-columns: 1fr;
+  }
+
+  .simulation-run-module {
+    justify-self: stretch;
+    min-height: 76px;
+  }
 }
 
 @media (max-width: 1120px) {
@@ -7798,7 +7798,6 @@ svg {
     justify-content: stretch;
   }
 
-  .correction-mode-switch,
   .switch-row {
     width: 100%;
   }
@@ -7807,11 +7806,16 @@ svg {
     grid-template-columns: 1fr;
     grid-template-areas:
       "sim-controls"
-      "sim-feedback"
-      "sim-scene";
+      "sim-scene"
+      "sim-feedback";
   }
 
-  .simulation-control-panel .section-title h2,
+  .simulation-setup-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .simulation-setup-header h2,
+  .simulation-scene-head h2,
   .simulation-advice-title h2 {
     white-space: normal;
   }
@@ -7820,7 +7824,7 @@ svg {
     aspect-ratio: 1.45 / 1;
   }
 
-  .simulation-metrics {
+  .simulation-result-ribbon {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
@@ -7873,7 +7877,7 @@ svg {
   .vision-quality-grid,
   .motion-phase-grid,
   .records-summary,
-  .simulation-metrics,
+  .simulation-result-ribbon,
   .detail-grid,
   .roadmap-grid,
   .video-pipeline-list,
@@ -7891,6 +7895,8 @@ svg {
     width: 100%;
   }
 
+  .simulation-setup-header,
+  .simulation-scene-head,
   .simulation-action-row {
     display: grid;
     grid-template-columns: 1fr;
@@ -8064,6 +8070,202 @@ svg {
     grid-template-columns: 1fr;
     grid-template-rows: clamp(148px, 15dvh, 205px) minmax(0, 1fr);
     min-height: 430px;
+  }
+}
+
+/* Virtual simulation: keep the curve as the visual center, with slimmer side rails. */
+@media (min-width: 1121px) {
+  .simulation-view .simulation-layout {
+    grid-template-columns: minmax(214px, 0.24fr) minmax(720px, 1.16fr) minmax(250px, 0.28fr);
+    grid-template-areas: "sim-controls sim-scene sim-feedback";
+    gap: clamp(12px, 1.15vw, 18px);
+    align-items: start;
+  }
+
+  .simulation-view .simulation-control-panel,
+  .simulation-view .simulation-feedback-panel {
+    padding: clamp(14px, 1.05vw, 18px);
+  }
+
+  .simulation-view .simulation-scene-panel {
+    padding: clamp(18px, 1.35vw, 24px);
+  }
+
+  .simulation-view .simulation-control-panel {
+    align-self: start;
+  }
+
+  .simulation-view .simulation-feedback-panel {
+    align-self: start;
+    max-height: none;
+    overflow: visible;
+  }
+
+  .simulation-view .simulation-setup-header {
+    gap: 8px;
+    padding-bottom: 12px;
+  }
+
+  .simulation-view .simulation-setup-header h2 {
+    font-size: clamp(19px, 1.2vw, 23px);
+    line-height: 1.12;
+  }
+
+  .simulation-view .simulation-setup-header p:not(.eyebrow) {
+    display: none;
+  }
+
+  .simulation-view .simulation-action-row {
+    gap: 8px;
+  }
+
+  .simulation-view .simulation-action-row .primary-button,
+  .simulation-view .simulation-action-row .ghost-button {
+    min-height: 44px;
+    padding-inline: 10px;
+  }
+
+  .simulation-view .simulation-field-group {
+    gap: 8px;
+    padding: 10px;
+    border-radius: 14px;
+  }
+
+  .simulation-view .simulation-field-group .form-grid,
+  .simulation-view .simulation-field-group.geometry-group .form-grid {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
+  .simulation-view .simulation-field-group input,
+  .simulation-view .simulation-field-group select {
+    min-height: 38px;
+  }
+
+  .simulation-view .simulation-ranges label {
+    padding: 8px 9px;
+  }
+
+  .simulation-view .simulation-scene-head {
+    align-items: center;
+  }
+
+  .simulation-view .simulation-scene-head h2 {
+    font-size: clamp(25px, 1.75vw, 32px);
+  }
+
+  .simulation-view .simulation-chart-tabs {
+    flex: 0 0 auto;
+  }
+
+  .simulation-view #simulationCanvas {
+    min-height: min(560px, calc(100dvh - 300px));
+    aspect-ratio: 1.72 / 1;
+    margin-top: 14px;
+    border-radius: 18px;
+  }
+
+  .simulation-view .simulation-result-ribbon {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 7px;
+    margin-top: 12px;
+    padding: 7px;
+  }
+
+  .simulation-view .simulation-result-ribbon .metric {
+    display: grid;
+    min-height: 76px;
+    align-content: center;
+    padding: 10px 8px;
+  }
+
+  .simulation-view .simulation-result-ribbon .metric span {
+    font-size: 10px;
+  }
+
+  .simulation-view .simulation-result-ribbon .metric strong {
+    font-size: clamp(14px, 1vw, 19px);
+  }
+
+  .simulation-view .simulation-advice-head {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .simulation-view .simulation-run-module {
+    justify-self: stretch;
+    min-height: 74px;
+    padding: 10px;
+  }
+
+  .simulation-view .simulation-advice-brief {
+    grid-template-columns: 1fr;
+    gap: 8px;
+    padding: 10px;
+  }
+
+  .simulation-view .simulation-advice-row {
+    grid-template-columns: 30px minmax(0, 1fr);
+    gap: 10px;
+    padding: 10px;
+  }
+}
+
+@media (min-width: 1121px) and (max-width: 1380px) {
+  .simulation-view .simulation-layout {
+    grid-template-columns: minmax(202px, 0.23fr) minmax(610px, 1fr) minmax(228px, 0.24fr);
+  }
+
+  .simulation-view .simulation-scene-head {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .simulation-view .simulation-chart-tabs {
+    width: 100%;
+  }
+
+  .simulation-view .simulation-chart-tabs button {
+    flex: 1 1 0;
+    justify-content: center;
+  }
+
+  .simulation-view #simulationCanvas {
+    min-height: min(500px, calc(100dvh - 320px));
+  }
+}
+
+@media (min-width: 901px) and (max-width: 1120px) {
+  .simulation-view .simulation-layout {
+    grid-template-columns: minmax(230px, 0.55fr) minmax(300px, 0.7fr);
+    grid-template-areas:
+      "sim-controls sim-feedback"
+      "sim-scene sim-scene";
+    gap: 14px;
+  }
+
+  .simulation-view .simulation-setup-grid,
+  .simulation-view .simulation-field-group .form-grid,
+  .simulation-view .simulation-field-group.geometry-group .form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .simulation-view #simulationCanvas {
+    aspect-ratio: 1.66 / 1;
+  }
+
+  .simulation-view .simulation-result-ribbon {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 900px) {
+  .simulation-view .simulation-layout {
+    grid-template-areas:
+      "sim-controls"
+      "sim-scene"
+      "sim-feedback";
   }
 }
 
