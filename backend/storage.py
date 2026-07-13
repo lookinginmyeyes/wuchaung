@@ -877,7 +877,7 @@ def build_report_text(run: dict) -> str:
         "| 类型 | 指标或现象 | 分析 |",
         "|---|---|---|",
         f"| 人工测量误差 | vt 偏差 {format_percent(v_error)}；η₀ 偏差 {format_percent(eta_error)} | 若偏差较大，优先检查人工计时、人工选段、读数反应延迟和理想公式单位换算。 |",
-        report_row("AI拟合误差", f"R²={format_report_value(result.get('r2'), '', 4)}；匀速段 CV={format_report_value(quality.get('uniform_segment_cv'), '', 4)}", "R² 偏低或速度离散度偏大时，说明匀速段不稳定或轨迹噪声较大。"),
+        report_row("AI拟合误差", f"R²={format_report_value(result.get('r2'), '', 4)}", "R² 偏低时，说明选定区间线性拟合不足，需复核轨迹、选段和追踪稳定性。"),
         report_row("视觉追踪误差", f"平均置信度 {format_percent(result.get('tracking_confidence'))}；异常点 {int(preprocessing.get('outlier_points', 0) or 0)}；无效点 {int(preprocessing.get('dropped_points', 0) or 0)}", "气泡、划痕、阴影、曝光过高、背景过暗或检测区域过大都可能造成误识别。"),
         report_row("标定误差", "标定棒点选误差会改变像素到真实距离的换算比例", "这是 AI 改进测量引入的主要附加不确定度之一，建议放大标定画面后再点选标记。"),
         report_row("对焦与景深误差", "焦点偏离小球运动平面会使边缘模糊", "应锁定曝光和对焦，使小球所在平面清晰；必要时提高照明和背景对比度。"),
@@ -907,16 +907,12 @@ def build_summary_report_text(runs: list[dict]) -> str:
     records.sort(key=lambda item: int(item.get("id") or 0))
     metrics = [summary_metrics(run) for run in records]
     valid = [item for item in metrics if item.get("terminal_velocity") is not None]
+    groups = summary_condition_groups(metrics)
     report_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     ids = [str(item.get("id")) for item in metrics if item.get("id") is not None]
     liquids = sorted({str(item.get("liquid") or "-") for item in metrics})
     video_count = sum(1 for run in records if (run.get("video") or {}).get("url"))
     student_count = sum(1 for item in metrics if item.get("student_eta") is not None and item.get("student_v") is not None)
-    re_values = [item["re"] for item in valid if item.get("re") is not None]
-    re_low = sum(1 for value in re_values if value < 0.1)
-    re_ok = sum(1 for value in re_values if value < 1)
-    re_risky = sum(1 for value in re_values if value >= 1)
-    quality_flags = summary_quality_flags(metrics)
 
     lines = [
         "# 落球法 AI 视觉测量多次实验汇总报告",
@@ -931,6 +927,11 @@ def build_summary_report_text(runs: list[dict]) -> str:
         report_row("有效分析记录", f"{len(valid)} 条"),
         report_row("记录 ID", ", ".join(ids) if ids else "-"),
         report_row("液体种类", "、".join(liquids) if liquids else "-"),
+        report_row("实验条件组数", f"{len(groups)} 组"),
+        report_row("分类原则", "按液体、温度、小球直径 2r、量筒内径 D、液体深度 H 分组；不同小球直径的数据不合并求同一个平均值。"),
+        report_row("小球直径范围", summary_range_text(metrics, "ball_diameter_mm", "mm", 3)),
+        report_row("量筒内径范围", summary_range_text(metrics, "tube_diameter_mm", "mm", 2)),
+        report_row("液体深度范围", summary_range_text(metrics, "liquid_depth_mm", "mm", 1)),
         report_row("含人工测量", f"{student_count}/{len(records)} 条"),
         report_row("含录像归档", f"{video_count}/{len(records)} 条"),
         "",
@@ -938,67 +939,27 @@ def build_summary_report_text(runs: list[dict]) -> str:
         summary_conclusion(metrics),
         "",
         "## 3. 实验记录明细",
-        "| ID | 时间 | 液体 | 温度 | vt_AI | η₀_AI | η_修正 | AI相对u | U(η,k=2) | Re | R² | 置信度 | CV | 人工η偏差 | 分数 |",
-        "|---:|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
+        "| ID | 时间 | 液体 | 温度 | 小球直径2r | 量筒内径D | 液深H | vt_AI | η₀_AI | η_修正 | U(η,k=2) | Re | R² | 置信度 | 人工η偏差 | 分数 |",
+        "|---:|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
     ]
     lines.extend(summary_detail_row(item) for item in metrics)
     lines.extend([
         "",
-        "## 4. 重复性与离散程度统计",
-        "| 指标 | 有效数 | 平均值 | 标准差 | RSD | 最小值 | 最大值 | 解读 |",
-        "|---|---:|---:|---:|---:|---:|---:|---|",
-        summary_stat_row("AI终端速度 vt", metrics, "terminal_velocity", "m/s", 5, "反映小球稳定下落速度的一致性。"),
-        summary_stat_row("AI理想粘滞系数 η₀", metrics, "ideal_viscosity", "Pa·s", 6, "用于与学生理想公式计算结果比较，是评分参考。"),
-        summary_stat_row("修正粘滞系数 η", metrics, "corrected_viscosity", "Pa·s", 6, "计入壁效应和 Re 修正后，用于模型复盘。"),
-        summary_stat_row("人工粘滞系数", metrics, "student_eta", "Pa·s", 6, "反映学生人工测量和计算结果的重复性。"),
-        summary_stat_row("人工η相对偏差", metrics, "eta_error", "", 4, "越低说明人工理想公式结果越接近 AI 理想参考。", percent=True),
-        summary_stat_row("AI拟合相对不确定度", metrics, "ai_relative_uncertainty", "", 4, "由轨迹速度波动、拟合标准误等保存结果估计，反映 AI 视觉测量自身波动。", percent=True),
-        summary_stat_row("合成相对不确定度", metrics, "propagated_relative_uncertainty", "", 4, "按平台默认最小分度、匀速段距离/时间和标定点误差传播得到。", percent=True),
-        summary_stat_row("标准不确定度 u(η)", metrics, "propagated_standard_uncertainty", "Pa·s", 6, "由修正粘滞系数乘以合成相对不确定度得到。"),
-        summary_stat_row("扩展不确定度 U(η,k=2)", metrics, "propagated_expanded_uncertainty", "Pa·s", 6, "按 k=2 给出的报告用不确定度区间。"),
-        summary_stat_row("Re", metrics, "re", "", 4, "用于判断 Stokes 低雷诺数假设是否可靠。"),
-        summary_stat_row("R²", metrics, "r2", "", 4, "越接近 1，说明匀速段线性拟合越好。"),
-        summary_stat_row("追踪置信度", metrics, "tracking_confidence", "", 4, "越高说明 AI 视觉追踪越稳定。", percent=True),
-        summary_stat_row("匀速段 CV", metrics, "uniform_cv", "", 4, "越低说明平台段速度越稳定。"),
-        summary_stat_row("综合评分", metrics, "score", "分", 1, "综合反映人工结果偏差和 AI 拟合质量。"),
+        "## 4. 按小球直径与实验条件分组",
+        "不同直径小球的终端速度、Re、壁效应和选段稳定性都可能不同，因此本报告只在同一实验条件组内计算均值、标准差和 RSD。跨组数据仅用于记录追溯，不直接合并为一个粘滞系数结论。",
         "",
-        "## 5. 按液体与温度分组",
-        "| 分组 | 记录数 | vt均值 | η₀均值 | η₀标准差 | η₀ RSD | Re均值 | 评分均值 |",
-        "|---|---:|---:|---:|---:|---:|---:|---:|",
+        "| 条件组 | 记录数 | 记录ID | 小球直径2r | 量筒内径D | 液深H | 温度 | vt均值 | η₀均值 | η₀ RSD | Re均值 | U(k=2)均值 | 分数均值 |",
+        "|---|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
     ])
     lines.extend(summary_group_rows(metrics))
     lines.extend([
         "",
-        "## 6. 模型适用性分析",
-        "| 判据 | 统计结果 | 说明 |",
-        "|---|---:|---|",
-        report_row("Re < 0.1", f"{re_low}/{len(re_values)}", "更接近蠕动流条件，Stokes 理想模型更可靠。"),
-        report_row("Re < 1", f"{re_ok}/{len(re_values)}", "教学实验常用低雷诺数判据。"),
-        report_row("Re ≥ 1", f"{re_risky}/{len(re_values)}", "惯性影响增强，建议更换更小小球、更高粘度液体或降低速度。"),
-        report_row("2r/D 平均值", summary_stat_text(metrics, "tube_ratio", "", 4), "小球直径与量筒内径之比，越小壁效应越弱。"),
-        report_row("K壁 平均值", summary_stat_text(metrics, "wall_correction", "", 4), "越接近 1，容器边界修正越小。"),
-        report_row("KRe 平均值", summary_stat_text(metrics, "reynolds_correction", "", 4), "越接近 1，雷诺数修正越小。"),
+        "## 5. 各组分类复盘",
+    ])
+    lines.extend(summary_group_measurement_sections(groups))
+    lines.extend([
         "",
-        "## 7. 数据质量分析",
-        "| 指标 | 汇总结果 | 说明 |",
-        "|---|---:|---|",
-        report_row("平均追踪置信度", summary_stat_text(metrics, "tracking_confidence", "", 4, percent=True), "若偏低，优先检查背光、对焦、反光和小球颜色对比度。"),
-        report_row("AI拟合相对不确定度", summary_stat_text(metrics, "ai_relative_uncertainty", "", 4, percent=True), "由平台后端随实验记录保存，主要反映速度拟合波动。"),
-        report_row("合成相对不确定度", summary_stat_text(metrics, "propagated_relative_uncertainty", "", 4, percent=True), "按默认最小分度传播，包含直径、时间、距离、量筒内径、液体深度和标定点误差。"),
-        report_row("平均扩展不确定度 U", summary_stat_text(metrics, "propagated_expanded_uncertainty", "Pa·s", 6), "用于表达 η ± U，覆盖因子 k=2。"),
-        report_row("平均异常点数", summary_stat_text(metrics, "outlier_points", "个", 1), "异常点多时，速度曲线会出现尖峰或匀速段抖动。"),
-        report_row("平均无效点数", summary_stat_text(metrics, "dropped_points", "个", 1), "无效点多通常说明画面识别不稳定或小球离开 ROI。"),
-        report_row("平均匀速段持续时间", summary_stat_text(metrics, "segment_duration", "s", 3), "平台段越长，终端速度拟合越抗偶然误差。"),
-        report_row("需重点复查记录", "、".join(quality_flags) if quality_flags else "无明显高风险记录", "由低 R²、高 CV、低置信度、Re 偏高或人工偏差过大综合筛选。"),
-        "",
-        "## 8. 人工测量与 AI 测量对比",
-        "| 对比项 | 汇总结果 | 教学意义 |",
-        "|---|---:|---|",
-        report_row("人工 vt 相对偏差", summary_stat_text(metrics, "v_error", "", 4, percent=True), "反映人工计时、人工选段和读数反应误差。"),
-        report_row("人工 η₀ 相对偏差", summary_stat_text(metrics, "eta_error", "", 4, percent=True), "反映人工理想公式计算结果与 AI 理想参考的一致性。"),
-        report_row("人工结果完整率", f"{student_count}/{len(records)}", "若缺少人工值，说明学生还没有完成独立测量与计算环节。"),
-        "",
-        "## 9. AI实验不确定度说明",
+        "## 6. AI实验不确定度说明",
         "| 不确定度来源 | 平台默认取值或计算方式 | 进入报告的方式 |",
         "|---|---|---|",
         report_row("小球直径 d", "Δd=0.01 mm", "按游标卡尺最小分度估计，进入直径相关项。"),
@@ -1009,12 +970,12 @@ def build_summary_report_text(runs: list[dict]) -> str:
         report_row("标定点误差", "Δl标定=0.5 mm", "由鼠标点击标定棒刻度点引入，是 AI 视觉测量新增的不确定度项。"),
         report_row("扩展不确定度", "U=2u", "报告中默认按 k=2 给出 η ± U。"),
         "",
-        "## 10. 综合改进建议",
+        "## 7. 综合改进建议",
     ])
     lines.extend(summary_advice(metrics))
     lines.extend([
         "",
-        "## 11. 报告使用说明",
+        "## 8. 报告使用说明",
         "这份多次实验报告适合放在实验复盘、研究报告或答辩材料中，用于说明平台不仅能给出单次结果，还能对多次重复实验进行统计分析。正式提交前建议保留原始视频、实验记录 ID 和单次报告，便于追溯每个统计值来自哪一次实验。",
     ])
     return "\n".join(lines)
@@ -1040,6 +1001,7 @@ def summary_metrics(run: dict) -> dict:
     segment_summary = describe_segment(segment, velocity_curve)
     radius_mm = report_float(params.get("radius_mm"))
     tube_diameter_mm = report_float(params.get("tube_diameter_mm"))
+    liquid_depth_mm = report_float(params.get("liquid_depth_mm"))
     corrected = report_float(result.get("viscosity"))
     ideal = report_float(result.get("ideal_viscosity"))
     if ideal is None:
@@ -1053,7 +1015,9 @@ def summary_metrics(run: dict) -> dict:
         "liquid": params.get("liquid") or "-",
         "temperature_c": report_float(params.get("temperature_c")),
         "radius_mm": radius_mm,
+        "ball_diameter_mm": (2 * radius_mm) if radius_mm is not None else None,
         "tube_diameter_mm": tube_diameter_mm,
+        "liquid_depth_mm": liquid_depth_mm,
         "tube_ratio": (2 * radius_mm / tube_diameter_mm) if radius_mm and tube_diameter_mm else None,
         "terminal_velocity": report_float(result.get("terminal_velocity")),
         "ideal_viscosity": ideal,
@@ -1228,63 +1192,237 @@ def summary_detail_row(item: dict) -> str:
         str(item.get("created_at") or "-").replace("T", " "),
         item.get("liquid", "-"),
         format_summary_number(item.get("temperature_c"), "℃", 1),
+        format_summary_number(item.get("ball_diameter_mm"), "mm", 3),
+        format_summary_number(item.get("tube_diameter_mm"), "mm", 2),
+        format_summary_number(item.get("liquid_depth_mm"), "mm", 1),
         format_summary_number(item.get("terminal_velocity"), "m/s", 5),
         format_summary_number(item.get("ideal_viscosity"), "Pa·s", 6),
         format_summary_number(item.get("corrected_viscosity"), "Pa·s", 6),
-        format_summary_number(item.get("propagated_relative_uncertainty") or item.get("ai_relative_uncertainty"), "", 4, percent=True),
         format_summary_number(item.get("propagated_expanded_uncertainty") or item.get("ai_expanded_uncertainty"), "Pa·s", 6),
         format_summary_number(item.get("re"), "", 4),
         format_summary_number(item.get("r2"), "", 4),
         format_summary_number(item.get("tracking_confidence"), "", 4, percent=True),
-        format_summary_number(item.get("uniform_cv"), "", 4),
         format_summary_number(item.get("eta_error"), "", 4, percent=True),
         format_summary_number(item.get("score"), "分", 0),
     )
 
 
-def summary_group_key(item: dict) -> str:
-    liquid = str(item.get("liquid") or "-")
-    temp = report_float(item.get("temperature_c"))
-    if temp is None:
-        return liquid
-    return f"{liquid} / {temp:.1f}℃"
+def summary_rounded_value(item: dict, key: str, digits: int):
+    value = report_float(item.get(key))
+    return round(value, digits) if value is not None else None
+
+
+def summary_group_key(item: dict) -> tuple:
+    return (
+        str(item.get("liquid") or "-"),
+        summary_rounded_value(item, "temperature_c", 1),
+        summary_rounded_value(item, "ball_diameter_mm", 3),
+        summary_rounded_value(item, "tube_diameter_mm", 2),
+        summary_rounded_value(item, "liquid_depth_mm", 1),
+    )
+
+
+def summary_condition_groups(metrics: list[dict]) -> list[tuple[tuple, list[dict]]]:
+    groups: dict[tuple, list[dict]] = {}
+    for item in metrics:
+        groups.setdefault(summary_group_key(item), []).append(item)
+    return [(key, groups[key]) for key in sorted(groups, key=summary_group_sort_key)]
+
+
+def summary_group_sort_key(key: tuple) -> tuple:
+    liquid, temp, diameter, tube, depth = key
+    return (
+        str(liquid),
+        -1e9 if temp is None else float(temp),
+        -1e9 if diameter is None else float(diameter),
+        -1e9 if tube is None else float(tube),
+        -1e9 if depth is None else float(depth),
+    )
+
+
+def summary_group_label(key: tuple) -> str:
+    liquid, temp, diameter, tube, depth = key
+    parts = [
+        str(liquid or "-"),
+        f"T={temp:.1f}℃" if temp is not None else "T未填",
+        f"2r={diameter:.3f}mm" if diameter is not None else "2r未填",
+        f"D={tube:.2f}mm" if tube is not None else "D未填",
+        f"H={depth:.1f}mm" if depth is not None else "H未填",
+    ]
+    return " / ".join(parts)
+
+
+def summary_range_text(metrics: list[dict], key: str, unit: str = "", digits: int = 3) -> str:
+    values = summary_values(metrics, key)
+    if not values:
+        return "未填写"
+    low = min(values)
+    high = max(values)
+    if abs(high - low) < 10 ** (-(digits + 1)):
+        return format_summary_number(low, unit, digits)
+    return f"{format_summary_number(low, unit, digits)} 至 {format_summary_number(high, unit, digits)}"
 
 
 def summary_group_rows(metrics: list[dict]) -> list[str]:
-    groups: dict[str, list[dict]] = {}
-    for item in metrics:
-        groups.setdefault(summary_group_key(item), []).append(item)
+    groups = summary_condition_groups(metrics)
     if not groups:
-        return [report_row("暂无分组", 0, "-", "-", "-", "-", "-", "-")]
+        return [report_row("暂无分组", 0, "-", "-", "-", "-", "-", "-", "-", "-", "-", "-", "-")]
     rows = []
-    for label in sorted(groups):
-        group = groups[label]
+    for key, group in groups:
+        label = summary_group_label(key)
         rows.append(report_row(
             label,
             len(group),
+            "、".join(str(item.get("id", "-")) for item in group),
+            summary_range_text(group, "ball_diameter_mm", "mm", 3),
+            summary_range_text(group, "tube_diameter_mm", "mm", 2),
+            summary_range_text(group, "liquid_depth_mm", "mm", 1),
+            summary_range_text(group, "temperature_c", "℃", 1),
             format_summary_number(summary_stats(group, "terminal_velocity")["mean"], "m/s", 5),
             format_summary_number(summary_stats(group, "ideal_viscosity")["mean"], "Pa·s", 6),
-            format_summary_number(summary_stats(group, "ideal_viscosity")["stdev"], "Pa·s", 6),
             format_percent(summary_stats(group, "ideal_viscosity")["rsd"]) if summary_stats(group, "ideal_viscosity")["rsd"] is not None else "未填写",
             format_summary_number(summary_stats(group, "re")["mean"], "", 4),
+            format_summary_number(summary_stats(group, "propagated_expanded_uncertainty")["mean"], "Pa·s", 6),
             format_summary_number(summary_stats(group, "score")["mean"], "分", 1),
+        ))
+    return rows
+
+
+def summary_group_measurement_sections(groups: list[tuple[tuple, list[dict]]]) -> list[str]:
+    if not groups:
+        return ["未找到可统计的实验条件组。"]
+    lines = []
+    for index, (key, group) in enumerate(groups, start=1):
+        lines.extend([
+            "",
+            f"## 5.{index} {summary_group_label(key)}",
+            "### AI 测量数据",
+            "| 指标 | 有效数 | 平均值 | 标准差 | RSD | 最小值 | 最大值 | 解读 |",
+            "|---|---:|---:|---:|---:|---:|---:|---|",
+            summary_stat_row("AI终端速度 vt", group, "terminal_velocity", "m/s", 5, "同一小球直径下终端速度的重复性。"),
+            summary_stat_row("AI理想粘滞系数 η₀", group, "ideal_viscosity", "Pa·s", 6, "同组内用于学生理想公式对照的主要统计量。"),
+            summary_stat_row("修正粘滞系数 η", group, "corrected_viscosity", "Pa·s", 6, "计入壁效应和 Re 修正后，用于模型复盘。"),
+            summary_stat_row("Re", group, "re", "", 4, "用于判断 Stokes 低雷诺数假设是否可靠。"),
+            summary_stat_row("R²", group, "r2", "", 4, "越接近 1，说明选定区间的线性拟合越好。"),
+            summary_stat_row("追踪置信度", group, "tracking_confidence", "", 4, "越高说明 AI 视觉追踪越稳定。", percent=True),
+            "",
+            "### 人工测量数据",
+            "| 指标 | 有效数 | 平均值 | 标准差 | RSD | 最小值 | 最大值 | 解读 |",
+            "|---|---:|---:|---:|---:|---:|---:|---|",
+            summary_stat_row("人工终端速度 vt", group, "student_v", "m/s", 5, "学生人工计时和选段得到的终端速度。"),
+            summary_stat_row("人工粘滞系数", group, "student_eta", "Pa·s", 6, "同组学生人工测量与计算结果的重复性。"),
+            summary_stat_row("综合评分", group, "score", "分", 1, "综合反映人工结果偏差和 AI 拟合质量。"),
+            "",
+            "### 偏差对比",
+            "| 对比项 | 有效数 | 平均值 | 标准差 | RSD | 最小值 | 最大值 | 解读 |",
+            "|---|---:|---:|---:|---:|---:|---:|---|",
+            summary_stat_row("人工 vt 相对偏差", group, "v_error", "", 4, "反映人工计时和人工选段与 AI 参考速度的差异。", percent=True),
+            summary_stat_row("人工η相对偏差", group, "eta_error", "", 4, "越低说明人工理想公式结果越接近 AI 理想参考。", percent=True),
+            "",
+            "### 不确定度与模型条件",
+            "| 指标 | 有效数 | 平均值 | 标准差 | RSD | 最小值 | 最大值 | 解读 |",
+            "|---|---:|---:|---:|---:|---:|---:|---|",
+            summary_stat_row("AI拟合相对不确定度", group, "ai_relative_uncertainty", "", 4, "由轨迹速度波动、拟合标准误等保存结果估计。", percent=True),
+            summary_stat_row("合成相对不确定度", group, "propagated_relative_uncertainty", "", 4, "包含直径、时间、距离、量筒内径、液体深度和标定点误差。", percent=True),
+            summary_stat_row("扩展不确定度 U(η,k=2)", group, "propagated_expanded_uncertainty", "Pa·s", 6, "同组报告用不确定度区间。"),
+            summary_stat_row("2r/D", group, "tube_ratio", "", 4, "小球直径与量筒内径之比，越小壁效应越弱。"),
+            summary_stat_row("K壁", group, "wall_correction", "", 4, "壁面修正因子，越接近 1 越接近无限大液体假设。"),
+            summary_stat_row("KRe", group, "reynolds_correction", "", 4, "雷诺数修正因子，越接近 1 惯性修正越弱。"),
+        ])
+    return lines
+
+
+def summary_group_model_rows(groups: list[tuple[tuple, list[dict]]]) -> list[str]:
+    if not groups:
+        return [report_row("暂无分组", "-", "-", "-", "-", "-", "-", "-")]
+    rows = []
+    for key, group in groups:
+        re_values = [item["re"] for item in group if item.get("re") is not None]
+        re_low = sum(1 for value in re_values if value < 0.1)
+        re_ok = sum(1 for value in re_values if value < 1)
+        re_risky = sum(1 for value in re_values if value >= 1)
+        tube_ratio = summary_stats(group, "tube_ratio").get("mean")
+        wall = summary_stats(group, "wall_correction").get("mean")
+        kre = summary_stats(group, "reynolds_correction").get("mean")
+        warnings = []
+        if re_values and re_risky:
+            warnings.append("Re偏高")
+        if tube_ratio is not None and tube_ratio > 0.1:
+            warnings.append("壁效应较明显")
+        if wall is not None and wall > 1.15:
+            warnings.append("K壁偏离1")
+        if kre is not None and abs(kre - 1) > 0.05:
+            warnings.append("KRe偏离1")
+        rows.append(report_row(
+            summary_group_label(key),
+            f"{re_low}/{len(re_values)}",
+            f"{re_ok}/{len(re_values)}",
+            f"{re_risky}/{len(re_values)}",
+            format_summary_number(tube_ratio, "", 4),
+            format_summary_number(wall, "", 4),
+            format_summary_number(kre, "", 4),
+            "、".join(warnings) if warnings else "模型条件未见明显高风险",
+        ))
+    return rows
+
+
+def summary_group_quality_rows(groups: list[tuple[tuple, list[dict]]]) -> list[str]:
+    if not groups:
+        return [report_row("暂无分组", "-", "-", "-", "-", "-", "-", "-")]
+    rows = []
+    for key, group in groups:
+        rows.append(report_row(
+            summary_group_label(key),
+            summary_stat_text(group, "tracking_confidence", "", 4, percent=True),
+            summary_stat_text(group, "uniform_cv", "", 4),
+            summary_stat_text(group, "r2", "", 4),
+            summary_stat_text(group, "outlier_points", "个", 1),
+            summary_stat_text(group, "dropped_points", "个", 1),
+            summary_stat_text(group, "segment_duration", "s", 3),
+            "、".join(summary_quality_flags(group)) or "无明显高风险记录",
+        ))
+    return rows
+
+
+def summary_group_manual_rows(groups: list[tuple[tuple, list[dict]]]) -> list[str]:
+    if not groups:
+        return [report_row("暂无分组", "-", "-", "-", "-", "-", "-")]
+    rows = []
+    for key, group in groups:
+        complete = sum(1 for item in group if item.get("student_eta") is not None and item.get("student_v") is not None)
+        rows.append(report_row(
+            summary_group_label(key),
+            f"{complete}/{len(group)}",
+            summary_stat_text(group, "v_error", "", 4, percent=True),
+            summary_stat_text(group, "eta_error", "", 4, percent=True),
+            summary_stat_text(group, "student_eta", "Pa·s", 6),
+            summary_stat_text(group, "ideal_viscosity", "Pa·s", 6),
+            "同组比较可训练学生选段、计时和理想公式计算；跨球径比较只用于理解参数影响。",
         ))
     return rows
 
 
 def summary_conclusion(metrics: list[dict]) -> str:
     count = len(metrics)
+    groups = summary_condition_groups(metrics)
+    diameters = sorted({value for value in (report_float(item.get("ball_diameter_mm")) for item in metrics) if value is not None})
     eta_stat = summary_stats(metrics, "ideal_viscosity")
     vt_stat = summary_stats(metrics, "terminal_velocity")
     re_stat = summary_stats(metrics, "re")
     score_stat = summary_stats(metrics, "score")
     uncertainty_stat = summary_stats(metrics, "propagated_expanded_uncertainty")
-    fragments = [f"本次共汇总 {count} 条实验记录"]
-    if eta_stat["n"]:
+    fragments = [f"本次共汇总 {count} 条实验记录，已按 {len(groups)} 个实验条件组分类统计"]
+    if len(diameters) > 1:
+        fragments.append(f"包含 {len(diameters)} 种小球直径（{', '.join(f'{value:.3f} mm' for value in diameters)}），不同球径不合并求同一个粘滞系数平均值")
+    elif diameters:
+        fragments.append(f"小球直径为 {diameters[0]:.3f} mm，可作为同一球径重复实验统计")
+    if eta_stat["n"] and len(groups) <= 1:
         fragments.append(f"AI 理想粘滞系数均值为 {format_summary_number(eta_stat['mean'], 'Pa·s', 6)}，RSD 为 {format_percent(eta_stat['rsd']) if eta_stat['rsd'] is not None else '未填写'}")
-    if vt_stat["n"]:
+    elif eta_stat["n"]:
+        fragments.append("AI 理想粘滞系数、终端速度和 Re 的均值已在各组内分别给出")
+    if vt_stat["n"] and len(groups) <= 1:
         fragments.append(f"终端速度均值为 {format_summary_number(vt_stat['mean'], 'm/s', 5)}")
-    if re_stat["n"]:
+    if re_stat["n"] and len(groups) <= 1:
         fragments.append(f"Re 均值为 {format_summary_number(re_stat['mean'], '', 4)}")
     if score_stat["n"]:
         fragments.append(f"平均评分为 {format_summary_number(score_stat['mean'], '分', 1)}")
@@ -1304,8 +1442,6 @@ def summary_quality_flags(metrics: list[dict]) -> list[str]:
         reasons = []
         if (item.get("r2") is not None) and item["r2"] < 0.985:
             reasons.append("R²偏低")
-        if (item.get("uniform_cv") is not None) and item["uniform_cv"] > 0.08:
-            reasons.append("匀速段波动大")
         if (item.get("tracking_confidence") is not None) and item["tracking_confidence"] < 0.72:
             reasons.append("追踪置信度低")
         if (item.get("re") is not None) and item["re"] >= 1:
@@ -1319,19 +1455,27 @@ def summary_quality_flags(metrics: list[dict]) -> list[str]:
 
 def summary_advice(metrics: list[dict]) -> list[str]:
     advice = []
-    eta_rsd = summary_stats(metrics, "ideal_viscosity").get("rsd")
+    groups = summary_condition_groups(metrics)
+    if len(groups) > 1:
+        advice.append("- 本次勾选记录包含多个实验条件组，正式报告和课堂复盘应按小球直径分别给出均值、标准差和 RSD，不建议把不同球径结果直接合并成一个粘滞系数。")
+    eta_rsd = summary_stats(metrics, "ideal_viscosity").get("rsd") if len(groups) <= 1 else None
     confidence = summary_stats(metrics, "tracking_confidence").get("mean")
     re_mean = summary_stats(metrics, "re").get("mean")
-    cv_mean = summary_stats(metrics, "uniform_cv").get("mean")
     if eta_rsd is not None and eta_rsd > 0.08:
         advice.append("- 粘滞系数重复性波动较大，建议固定释放高度、摄像机位置和背光条件，并至少重复 5 次后剔除明显异常记录。")
-    else:
+    elif len(groups) <= 1:
         advice.append("- 当前多次测量的粘滞系数离散程度可作为重复性分析依据，正式报告中建议同时给出均值、标准差和 RSD。")
+    for key, group in groups:
+        group_eta_rsd = summary_stats(group, "ideal_viscosity").get("rsd")
+        group_re = summary_stats(group, "re").get("mean")
+        group_label = summary_group_label(key)
+        if group_eta_rsd is not None and group_eta_rsd > 0.08:
+            advice.append(f"- {group_label} 的 η₀ RSD 为 {format_percent(group_eta_rsd)}，建议优先复核该组释放一致性、标定覆盖区间和匀速段选取。")
+        if group_re is not None and group_re >= 1:
+            advice.append(f"- {group_label} 的 Re 均值偏高，说明该球径下惯性影响较强，可换更小球或更高粘度液体。")
     if confidence is not None and confidence < 0.78:
         advice.append("- 平均追踪置信度偏低，优先优化背光、对焦、小球颜色对比和 ROI 范围，再重新采集。")
-    if cv_mean is not None and cv_mean > 0.06:
-        advice.append("- 匀速段速度离散度偏高，建议延长完整下落观察区间，并复核是否存在底部反光、气泡或小球偏心下落。")
-    if re_mean is not None and re_mean >= 1:
+    if re_mean is not None and re_mean >= 1 and len(groups) <= 1:
         advice.append("- Re 平均值偏高，说明 Stokes 条件风险较大，可换用更小半径小球或更高粘度液体。")
     else:
         advice.append("- 若 Re 和 K壁 均较稳定，可在答辩中强调 AI 不仅输出结果，还能自动检查模型适用条件。")

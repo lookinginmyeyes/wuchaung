@@ -33,6 +33,8 @@ const state = {
   latest: null,
   records: [],
   selectedRecordIds: new Set(),
+  summaryReportMarkdown: "",
+  summaryReportIds: [],
   chartMode: "position",
   source: "realtime",
   videoUrl: null,
@@ -275,6 +277,10 @@ const el = {
   selectAllRecords: document.getElementById("selectAllRecords"),
   summarySelectedRecordsBtn: document.getElementById("summarySelectedRecordsBtn"),
   deleteSelectedRecordsBtn: document.getElementById("deleteSelectedRecordsBtn"),
+  summaryReportMeta: document.getElementById("summaryReportMeta"),
+  summaryReportBody: document.getElementById("summaryReportBody"),
+  downloadSummaryReportBtn: document.getElementById("downloadSummaryReportBtn"),
+  backToDiagnosisFromSummaryBtn: document.getElementById("backToDiagnosisFromSummaryBtn"),
   chatLog: document.getElementById("chatLog"),
   chatForm: document.getElementById("chatForm"),
   questionInput: document.getElementById("questionInput"),
@@ -375,6 +381,11 @@ const viewMeta = {
     eyebrow: "实验记录",
     title: "误差诊断与学生结果对比",
     subtitle: "把人工结果与系统参考放到同一证据链里，解释偏差来自哪里、实验该如何改进。",
+  },
+  "summary-report": {
+    eyebrow: "多次实验汇总",
+    title: "实验汇总报告",
+    subtitle: "汇总多条真实轨迹记录，比较重复性、模型适用性、AI 不确定度和人工偏差。",
   },
   validation: {
     eyebrow: "落地验证",
@@ -4348,14 +4359,7 @@ function updateQuizTutorAvailability() {
 }
 
 function isExperimentRelatedQuestion(question) {
-  const text = question.trim().toLowerCase();
-  if (!text) return false;
-  if (experimentStrictKeywords.some((keyword) => text.includes(keyword.toLowerCase()))) return true;
-  if (/(^|[^a-z])re([^a-z]|$)/.test(text)) return true;
-  if (experimentContextKeywords.some((keyword) => text.includes(keyword.toLowerCase()))) {
-    return !unrelatedTopicKeywords.some((keyword) => text.includes(keyword.toLowerCase()));
-  }
-  return false;
+  return Boolean(question.trim());
 }
 
 function addQuizTutorMessage(type, text) {
@@ -4455,7 +4459,7 @@ function quizTutorPrompt(question, context) {
   return [
     "你是落球法 AI 实验平台的预习作业问答 agent。",
     "教学方式：采用苏格拉底式引导，不直接展开长篇标准答案；先指出学生当前理解卡点，再用 2-4 个短问题引导学生自己修正。",
-    "回答边界：只围绕本实验讲义、落球法、Stokes 条件、终端速度、Re、壁效应、标定、背光成像、AI 视觉测量、误差分析和试题本身。",
+    "回答策略：优先结合本实验讲义、落球法、Stokes 条件、终端速度、Re、壁效应、标定、背光成像、AI 视觉测量、误差分析和试题本身；如果学生问题表达不清，先追问澄清，不要用固定拒答话术。",
     "输出要求：中文；短段落；不要使用展开式长清单；如果是错题，必须结合学生实际选择说明为什么这个选择暴露了什么误解；最后给一个可操作的复习动作。",
     `学生问题：${question}`,
     `上下文：${JSON.stringify(context || {}, null, 2)}`,
@@ -4697,6 +4701,7 @@ function switchView(viewName) {
     if (state.lectureStarted) updateLectureProgress();
   }
   if (nextView === "workspace") drawChart();
+  if (nextView === "summary-report") renderSummaryReportPage();
   if (nextView === "simulation") {
     drawSimulationCanvas();
   } else {
@@ -5856,22 +5861,61 @@ async function downloadSelectedSummaryReport() {
       }
       throw new Error(detail);
     }
-    const blob = await response.blob();
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = `落球法AI视觉测量多次实验汇总报告_${ids.length}条.md`;
-    document.body.appendChild(anchor);
-    anchor.click();
-    anchor.remove();
-    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
-    showToast(`已生成 ${ids.length} 条记录的汇总报告。`);
+    const markdown = await response.text();
+    state.summaryReportMarkdown = markdown;
+    state.summaryReportIds = ids;
+    renderSummaryReportPage();
+    switchView("summary-report");
+    showToast(`已打开 ${ids.length} 条记录的汇总报告。`);
   } catch (error) {
     showToast(`汇总报告生成失败：${error.message}`);
   } finally {
     setButtonLoading(el.summarySelectedRecordsBtn, false);
     syncRecordSelectionControls();
   }
+}
+
+function renderSummaryReportPage() {
+  if (!el.summaryReportBody) return;
+  const ids = state.summaryReportIds || [];
+  const markdown = state.summaryReportMarkdown || "";
+  if (el.summaryReportMeta) {
+    el.summaryReportMeta.textContent = ids.length
+      ? `已汇总 ${ids.length} 条实验记录 · ID ${ids.join("、")}`
+      : "尚未生成汇总报告";
+  }
+  if (el.downloadSummaryReportBtn) {
+    el.downloadSummaryReportBtn.disabled = !markdown;
+  }
+  if (!markdown) {
+    el.summaryReportBody.innerHTML = `
+      <div class="summary-report-empty">
+        <strong>还没有可预览的汇总报告</strong>
+        <p>请先返回实验复盘模块，勾选至少 2 条实验记录，再点击“汇总报告”。</p>
+      </div>
+    `;
+    return;
+  }
+  el.summaryReportBody.innerHTML = markdownReportToHtml(markdown);
+}
+
+function downloadCurrentSummaryReport() {
+  const markdown = state.summaryReportMarkdown || "";
+  if (!markdown) {
+    showToast("当前没有可保存的汇总报告。");
+    return;
+  }
+  const ids = state.summaryReportIds || [];
+  const blob = new Blob([markdown], { type: "text/markdown;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = `落球法AI视觉测量多次实验汇总报告_${ids.length || "多"}条.md`;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  showToast("汇总报告已保存下载。");
 }
 
 function drawChart() {
@@ -6152,7 +6196,7 @@ function reviewAgentPrompt(question, context) {
     "回答要求：必须结合上下文中的 vt、η_ideal、η_corrected、R²、Re、壁效应、匀速段稳定性、追踪置信度、人工测量偏差或诊断项；不要泛泛而谈。",
     "评分口径：学生人工粘滞系数按理想 Stokes 公式计算，因此评分偏差只和 η_ideal 比较；η_corrected 用于解释壁效应和 Re 修正带来的系统差异。",
     "输出结构：先给一句结论，再说明主要证据，最后给 2-3 条可执行改进建议。",
-    "边界：如果没有载入记录，提醒学生先载入实验记录，再给通用建议。",
+    "如果没有载入记录，提醒学生先载入实验记录，再给通用建议；如果问题超出当前实验数据，主动说明需要哪些补充数据，不要用固定拒答话术。",
     `学生问题：${question}`,
     `当前实验记录上下文：${JSON.stringify(context, null, 2)}`,
   ].join("\n");
@@ -6161,10 +6205,6 @@ function reviewAgentPrompt(question, context) {
 async function ask(question, sourceButton = null) {
   if (!question.trim()) return;
   addMessage("user", question);
-  if (!isExperimentRelatedQuestion(question)) {
-    addMessage("ai", "这个问题与落球法测粘、AI视觉测量、虚拟仿真、讲义或实验误差分析无关，我不能在本系统中回答。");
-    return;
-  }
   const pending = addMessage("ai pending", "正在根据实验讲义与测量规则生成答复...");
   setButtonLoading(sourceButton, true, "生成中");
   try {
@@ -6405,6 +6445,8 @@ function bind() {
   });
   el.summarySelectedRecordsBtn?.addEventListener("click", downloadSelectedSummaryReport);
   el.deleteSelectedRecordsBtn?.addEventListener("click", deleteSelectedRecords);
+  el.downloadSummaryReportBtn?.addEventListener("click", downloadCurrentSummaryReport);
+  el.backToDiagnosisFromSummaryBtn?.addEventListener("click", () => switchView("diagnosis"));
   el.scoreReportBtn?.addEventListener("click", scoreAndGenerateReport);
   el.presetBtn.addEventListener("click", () => {
     clearExperimentInputs();

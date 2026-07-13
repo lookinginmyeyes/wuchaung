@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>落球法测液体粘滞系数实验 AI 学习平台</title>
     <link rel="icon" href="./assets/generated/icons/calibration.png" />
-    <link rel="stylesheet" href="./styles.css?v=review-report-api-fix-v155" />
+    <link rel="stylesheet" href="./styles.css?v=summary-report-grouped-v157" />
   </head>
   <body data-source="realtime">
     <div class="app-shell">
@@ -1327,6 +1327,34 @@
 
           </section>
 
+          <section class="app-view summary-report-view" id="view-summary-report" data-view="summary-report" hidden>
+            <section class="summary-report-shell panel">
+              <div class="summary-report-toolbar">
+                <div>
+                  <p class="eyebrow">汇总预览</p>
+                  <h2>多次实验汇总报告</h2>
+                  <p id="summaryReportMeta">尚未生成汇总报告</p>
+                </div>
+                <div class="summary-report-actions">
+                  <button id="downloadSummaryReportBtn" class="primary-button" type="button" disabled>
+                    <img class="button-art" src="./assets/generated/buttons/export-report.png" alt="" />
+                    <span>保存下载</span>
+                  </button>
+                  <button id="backToDiagnosisFromSummaryBtn" class="ghost-button" type="button">
+                    <img class="button-art" src="./assets/generated/buttons/refresh-records.png" alt="" />
+                    <span>返回实验复盘</span>
+                  </button>
+                </div>
+              </div>
+              <article id="summaryReportBody" class="report-preview summary-report-body">
+                <div class="summary-report-empty">
+                  <strong>还没有可预览的汇总报告</strong>
+                  <p>请先返回实验复盘模块，勾选至少 2 条实验记录，再点击“汇总报告”。</p>
+                </div>
+              </article>
+            </section>
+          </section>
+
           <section class="app-view validation-view" id="view-validation" data-view="validation" hidden>
         <section class="system-config" id="roadmap">
           <section class="panel status-panel">
@@ -1397,6 +1425,6 @@
     </div>
 
     <div id="toast" class="toast"></div>
-    <script src="./app.js?v=review-report-api-fix-v155"></script>
+    <script src="./app.js?v=summary-report-grouped-v157"></script>
   </body>
 </html>

@@ -1245,16 +1245,7 @@ def contains_keyword(text: str, keywords: list[str]) -> bool:
 
 
 def is_experiment_related_question(question: str) -> bool:
-    text = question.strip().lower()
-    if not text:
-        return False
-    if contains_keyword(text, EXPERIMENT_STRICT_KEYWORDS):
-        return True
-    if re.search(r"(?<![a-z])re(?![a-z])", text):
-        return True
-    if contains_keyword(text, EXPERIMENT_CONTEXT_KEYWORDS):
-        return not contains_keyword(text, UNRELATED_TOPIC_KEYWORDS)
-    return False
+    return bool(question.strip())
 
 
 def wants_run_context(question: str) -> bool:
@@ -1327,8 +1318,6 @@ def local_review_answer(context: dict | None) -> str | None:
         evidence.append(f"追踪置信度约 {confidence * 100:.0f}%")
     if isinstance(eta_error, (int, float)):
         evidence.append(f"人工粘度相对理想公式参考偏差约 {eta_error * 100:.1f}%")
-    if quality.get("uniform_segment_cv") is not None:
-        evidence.append(f"匀速段波动 CV={quality.get('uniform_segment_cv')}")
     if diagnostics:
         evidence.append("诊断项：" + "；".join(str(item.get("title", "")) for item in diagnostics[:3]))
     evidence_text = "，".join(evidence) if evidence else "当前记录缺少足够质量指标"
@@ -1339,9 +1328,6 @@ def local_review_answer(context: dict | None) -> str | None:
 
 
 def local_answer_question(question: str, latest: dict | None) -> str:
-    if not is_experiment_related_question(question):
-        return "这个问题与落球法测粘、AI视觉测量、虚拟仿真、讲义、试题解析或实验误差分析无关，我不能在本系统中回答。"
-
     text = question.lower()
     context = f" {latest_measurement_text(latest)}" if wants_run_context(question) else ""
 
@@ -1373,7 +1359,7 @@ def local_answer_question(question: str, latest: dict | None) -> str:
         return "只有电脑时可以先完成软件闭环：讲义预习、准入试题、仿真参数、轨迹输入、速度曲线、匀速段识别、终端速度拟合、黏滞系数计算和误差诊断。真实设备阶段仍要补上固定机位拍摄、标定、重复测量和误差分析。"
     if contains_keyword(text, ["题", "试题", "答案", "解析", "讲义"]):
         return "这部分问题要回到讲义主线：先判断小球是否进入终端匀速，再看 Stokes 公式是否适用，重点复核 Re、壁效应、释放质量和视觉标定。若是错题，建议按“题目考点-正确选项-为什么其他选项不对”的顺序复盘。"
-    return "这个问题属于实验相关内容，但我需要更具体一点才能答准。你可以围绕 Re 判据、Stokes 公式、终端速度、壁效应、AI 视觉标定、仿真参数或误差诊断继续追问。"
+    return "我会优先把问题拉回到当前实验来分析。现在信息还不够具体，你可以补充你问的是预习题、某条实验记录、速度曲线、人工数据、AI测量偏差还是汇总报告，我再按对应数据给你拆解。"
 
 
 def extract_chat_completion_text(payload: dict) -> str:
@@ -1392,7 +1378,7 @@ def quiz_tutor_system_prompt(context: dict | None = None) -> str:
         "先指出学生选择暴露出的概念卡点，再提出2到4个短问题引导学生自己修正。"
         "如果学生问错题，必须结合题目、学生所选选项、正确选项和讲义知识点说明。"
         "不要展开成长篇条列，不要一次性把所有错题铺开；回答要短、具体、可追问。"
-        "只回答落球法、Stokes 定律、终端速度、雷诺数、壁效应、标定、背光成像、AI视觉测量、误差分析和本次试题相关内容。"
+        "优先围绕落球法、Stokes 定律、终端速度、雷诺数、壁效应、标定、背光成像、AI视觉测量、误差分析和本次试题展开；如果学生问题表达不清，先追问澄清。"
         "最后给一个可执行的复习动作，例如回看讲义中的某个条件、画出受力平衡、检查 v-t 图平台段。"
         )
     if isinstance(context, dict) and context.get("kind") == "review":
@@ -1403,12 +1389,12 @@ def quiz_tutor_system_prompt(context: dict | None = None) -> str:
             "学生人工粘滞系数按理想 Stokes 公式计算，评分只比较 η_ideal；η_corrected 只用于复盘壁效应和 Re 修正。"
             "回答格式要短而专业：先给一句结论，再列主要证据，最后给2到3条可执行改进建议。"
             "不要泛泛讲落球法；若没有载入记录，先要求学生载入记录，再给通用复盘方向。"
-            "只回答落球法、AI视觉测量、虚拟仿真、实验讲义、试题解析和误差分析相关问题。"
+            "优先围绕落球法、AI视觉测量、虚拟仿真、实验讲义、试题解析和误差分析展开；如果问题超出当前记录，说明还需要哪些数据。"
         )
     return (
-        "你是一个中学/大学物理实验教师，只回答落球法测量液体粘滞系数、AI视觉测量、"
-        "虚拟仿真、实验讲义、试题解析和误差分析相关问题。若问题无关，直接拒答。"
-        "回答要先给结论，再给公式、原因和实验建议。"
+        "你是一个中学/大学物理实验教师，优先把学生问题转化为落球法测量液体粘滞系数、AI视觉测量、"
+        "虚拟仿真、实验讲义、试题解析或误差分析中的可解释问题。"
+        "回答要先给结论，再给公式、原因和实验建议；信息不足时先说明需要补充什么。"
     )
 
 
@@ -1468,13 +1454,6 @@ def answer_question_online(question: str, latest: dict | None, context: dict | N
 
 
 def answer_question(question: str, latest: dict | None, context: dict | None = None) -> dict:
-    has_quiz_context = isinstance(context, dict) and str(context.get("kind", "")).startswith("quiz")
-    if not has_quiz_context and not is_experiment_related_question(question):
-        return {
-            "answer": "这个问题与落球法测粘、AI视觉测量、虚拟仿真、讲义、试题解析或实验误差分析无关，我不能在本系统中回答。",
-            "mode": "guarded",
-            "sources": [],
-        }
     online = answer_question_online(question, latest, context)
     if online:
         return online
