@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>落球法测液体粘滞系数实验 AI 学习平台</title>
     <link rel="icon" href="./assets/generated/icons/calibration.png" />
-    <link rel="stylesheet" href="./styles.css?v=review-summary-clean-v151" />
+    <link rel="stylesheet" href="./styles.css?v=review-report-api-fix-v155" />
   </head>
   <body data-source="realtime">
     <div class="app-shell">
@@ -1236,6 +1236,10 @@
                 <h2>真实轨迹分析记录</h2>
               </div>
               <div class="record-actions">
+                <button id="summarySelectedRecordsBtn" class="ghost-button" type="button" disabled>
+                  <img class="button-art" src="./assets/generated/buttons/export-report.png" alt="" />
+                  <span>汇总报告</span>
+                </button>
                 <button id="deleteSelectedRecordsBtn" class="ghost-button danger-button" type="button" disabled>
                   <img class="button-art" src="./assets/generated/icons/diagnostic.png" alt="" />
                   <span>删除所选</span>
@@ -1288,7 +1292,9 @@
             </div>
             <div class="assistant-grid">
               <div class="chat-panel">
-                <div id="chatLog" class="chat-log"></div>
+                <div id="chatLog" class="chat-log">
+                  <div class="message ai">先在左侧载入一条实验记录，Agent 会结合本次 vt、粘滞系数、Re、匀速段和诊断项复盘；未载入时也可以询问通用误差来源。</div>
+                </div>
                 <form id="chatForm" class="chat-form">
                   <input id="questionInput" type="text" placeholder="输入关于本次实验结果的问题" />
                   <button class="primary-button" type="submit">
@@ -1391,6 +1397,6 @@
     </div>
 
     <div id="toast" class="toast"></div>
-    <script src="./app.js?v=review-summary-clean-v151"></script>
+    <script src="./app.js?v=review-report-api-fix-v155"></script>
   </body>
 </html>

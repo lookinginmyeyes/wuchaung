@@ -1,4 +1,5 @@
 import json
+import math
 import os
 import sqlite3
 from datetime import datetime
@@ -461,6 +462,32 @@ def get_run(run_id: int) -> dict | None:
     return payload
 
 
+def get_runs(run_ids: list[int] | tuple[int, ...]) -> list[dict]:
+    clean_ids = []
+    for raw_id in run_ids:
+        try:
+            run_id = int(raw_id)
+        except (TypeError, ValueError):
+            continue
+        if run_id > 0:
+            clean_ids.append(run_id)
+    clean_ids = sorted(set(clean_ids))
+    if not clean_ids:
+        return []
+    if use_supabase():
+        return supabase_get_runs(clean_ids)
+    placeholders = ",".join("?" for _ in clean_ids)
+    with connect() as conn:
+        rows = conn.execute(f"SELECT id, payload FROM runs WHERE id IN ({placeholders})", clean_ids).fetchall()
+    runs = []
+    for row in rows:
+        payload = json.loads(row["payload"])
+        payload["id"] = row["id"]
+        runs.append(payload)
+    runs.sort(key=lambda item: clean_ids.index(int(item.get("id") or 0)) if int(item.get("id") or 0) in clean_ids else len(clean_ids))
+    return runs
+
+
 def update_run_payload(run_id: int, payload: dict) -> dict | None:
     score = (payload.get("student") or {}).get("score")
     if use_supabase():
@@ -634,6 +661,18 @@ def supabase_list_runs(limit: int | None = None) -> list[dict]:
 def supabase_get_run(run_id: int) -> dict | None:
     row = supabase_get_row(run_id)
     return normalise_supabase_payload(row) if row else None
+
+
+def supabase_get_runs(run_ids: list[int]) -> list[dict]:
+    clean_ids = sorted(set(int(item) for item in run_ids if int(item) > 0))
+    if not clean_ids:
+        return []
+    id_filter = f"in.({','.join(str(item) for item in clean_ids)})"
+    query = urlencode({"id": id_filter, "select": "id,payload"})
+    rows = supabase_request("GET", f"{SUPABASE_TABLE}?{query}") or []
+    runs = [normalise_supabase_payload(row) for row in rows]
+    runs.sort(key=lambda item: clean_ids.index(int(item.get("id") or 0)) if int(item.get("id") or 0) in clean_ids else len(clean_ids))
+    return runs
 
 
 def supabase_delete_run(run_id: int) -> bool:
@@ -863,6 +902,124 @@ def build_report_text(run: dict) -> str:
     return "\n".join(lines)
 
 
+def build_summary_report_text(runs: list[dict]) -> str:
+    records = [run for run in runs if isinstance(run, dict)]
+    records.sort(key=lambda item: int(item.get("id") or 0))
+    metrics = [summary_metrics(run) for run in records]
+    valid = [item for item in metrics if item.get("terminal_velocity") is not None]
+    report_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    ids = [str(item.get("id")) for item in metrics if item.get("id") is not None]
+    liquids = sorted({str(item.get("liquid") or "-") for item in metrics})
+    video_count = sum(1 for run in records if (run.get("video") or {}).get("url"))
+    student_count = sum(1 for item in metrics if item.get("student_eta") is not None and item.get("student_v") is not None)
+    re_values = [item["re"] for item in valid if item.get("re") is not None]
+    re_low = sum(1 for value in re_values if value < 0.1)
+    re_ok = sum(1 for value in re_values if value < 1)
+    re_risky = sum(1 for value in re_values if value >= 1)
+    quality_flags = summary_quality_flags(metrics)
+
+    lines = [
+        "# 落球法 AI 视觉测量多次实验汇总报告",
+        "",
+        "本报告由平台根据复盘页面勾选的多条实验记录自动生成，用于比较重复实验的一致性、人工测量与 AI 视觉测量的差异、物理模型适用条件以及数据质量。报告中的 AI 理想粘滞系数 η₀ 仍采用理想 Stokes 公式；修正粘滞系数 η 用于解释壁效应和雷诺数修正，不替代学生人工理想公式评分。",
+        "",
+        "## 1. 汇总范围",
+        "| 项目 | 内容 |",
+        "|---|---|",
+        report_row("生成时间", report_time),
+        report_row("勾选记录数", f"{len(records)} 条"),
+        report_row("有效分析记录", f"{len(valid)} 条"),
+        report_row("记录 ID", ", ".join(ids) if ids else "-"),
+        report_row("液体种类", "、".join(liquids) if liquids else "-"),
+        report_row("含人工测量", f"{student_count}/{len(records)} 条"),
+        report_row("含录像归档", f"{video_count}/{len(records)} 条"),
+        "",
+        "## 2. 总体结论",
+        summary_conclusion(metrics),
+        "",
+        "## 3. 实验记录明细",
+        "| ID | 时间 | 液体 | 温度 | vt_AI | η₀_AI | η_修正 | AI相对u | U(η,k=2) | Re | R² | 置信度 | CV | 人工η偏差 | 分数 |",
+        "|---:|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
+    ]
+    lines.extend(summary_detail_row(item) for item in metrics)
+    lines.extend([
+        "",
+        "## 4. 重复性与离散程度统计",
+        "| 指标 | 有效数 | 平均值 | 标准差 | RSD | 最小值 | 最大值 | 解读 |",
+        "|---|---:|---:|---:|---:|---:|---:|---|",
+        summary_stat_row("AI终端速度 vt", metrics, "terminal_velocity", "m/s", 5, "反映小球稳定下落速度的一致性。"),
+        summary_stat_row("AI理想粘滞系数 η₀", metrics, "ideal_viscosity", "Pa·s", 6, "用于与学生理想公式计算结果比较，是评分参考。"),
+        summary_stat_row("修正粘滞系数 η", metrics, "corrected_viscosity", "Pa·s", 6, "计入壁效应和 Re 修正后，用于模型复盘。"),
+        summary_stat_row("人工粘滞系数", metrics, "student_eta", "Pa·s", 6, "反映学生人工测量和计算结果的重复性。"),
+        summary_stat_row("人工η相对偏差", metrics, "eta_error", "", 4, "越低说明人工理想公式结果越接近 AI 理想参考。", percent=True),
+        summary_stat_row("AI拟合相对不确定度", metrics, "ai_relative_uncertainty", "", 4, "由轨迹速度波动、拟合标准误等保存结果估计，反映 AI 视觉测量自身波动。", percent=True),
+        summary_stat_row("合成相对不确定度", metrics, "propagated_relative_uncertainty", "", 4, "按平台默认最小分度、匀速段距离/时间和标定点误差传播得到。", percent=True),
+        summary_stat_row("标准不确定度 u(η)", metrics, "propagated_standard_uncertainty", "Pa·s", 6, "由修正粘滞系数乘以合成相对不确定度得到。"),
+        summary_stat_row("扩展不确定度 U(η,k=2)", metrics, "propagated_expanded_uncertainty", "Pa·s", 6, "按 k=2 给出的报告用不确定度区间。"),
+        summary_stat_row("Re", metrics, "re", "", 4, "用于判断 Stokes 低雷诺数假设是否可靠。"),
+        summary_stat_row("R²", metrics, "r2", "", 4, "越接近 1，说明匀速段线性拟合越好。"),
+        summary_stat_row("追踪置信度", metrics, "tracking_confidence", "", 4, "越高说明 AI 视觉追踪越稳定。", percent=True),
+        summary_stat_row("匀速段 CV", metrics, "uniform_cv", "", 4, "越低说明平台段速度越稳定。"),
+        summary_stat_row("综合评分", metrics, "score", "分", 1, "综合反映人工结果偏差和 AI 拟合质量。"),
+        "",
+        "## 5. 按液体与温度分组",
+        "| 分组 | 记录数 | vt均值 | η₀均值 | η₀标准差 | η₀ RSD | Re均值 | 评分均值 |",
+        "|---|---:|---:|---:|---:|---:|---:|---:|",
+    ])
+    lines.extend(summary_group_rows(metrics))
+    lines.extend([
+        "",
+        "## 6. 模型适用性分析",
+        "| 判据 | 统计结果 | 说明 |",
+        "|---|---:|---|",
+        report_row("Re < 0.1", f"{re_low}/{len(re_values)}", "更接近蠕动流条件，Stokes 理想模型更可靠。"),
+        report_row("Re < 1", f"{re_ok}/{len(re_values)}", "教学实验常用低雷诺数判据。"),
+        report_row("Re ≥ 1", f"{re_risky}/{len(re_values)}", "惯性影响增强，建议更换更小小球、更高粘度液体或降低速度。"),
+        report_row("2r/D 平均值", summary_stat_text(metrics, "tube_ratio", "", 4), "小球直径与量筒内径之比，越小壁效应越弱。"),
+        report_row("K壁 平均值", summary_stat_text(metrics, "wall_correction", "", 4), "越接近 1，容器边界修正越小。"),
+        report_row("KRe 平均值", summary_stat_text(metrics, "reynolds_correction", "", 4), "越接近 1，雷诺数修正越小。"),
+        "",
+        "## 7. 数据质量分析",
+        "| 指标 | 汇总结果 | 说明 |",
+        "|---|---:|---|",
+        report_row("平均追踪置信度", summary_stat_text(metrics, "tracking_confidence", "", 4, percent=True), "若偏低，优先检查背光、对焦、反光和小球颜色对比度。"),
+        report_row("AI拟合相对不确定度", summary_stat_text(metrics, "ai_relative_uncertainty", "", 4, percent=True), "由平台后端随实验记录保存，主要反映速度拟合波动。"),
+        report_row("合成相对不确定度", summary_stat_text(metrics, "propagated_relative_uncertainty", "", 4, percent=True), "按默认最小分度传播，包含直径、时间、距离、量筒内径、液体深度和标定点误差。"),
+        report_row("平均扩展不确定度 U", summary_stat_text(metrics, "propagated_expanded_uncertainty", "Pa·s", 6), "用于表达 η ± U，覆盖因子 k=2。"),
+        report_row("平均异常点数", summary_stat_text(metrics, "outlier_points", "个", 1), "异常点多时，速度曲线会出现尖峰或匀速段抖动。"),
+        report_row("平均无效点数", summary_stat_text(metrics, "dropped_points", "个", 1), "无效点多通常说明画面识别不稳定或小球离开 ROI。"),
+        report_row("平均匀速段持续时间", summary_stat_text(metrics, "segment_duration", "s", 3), "平台段越长，终端速度拟合越抗偶然误差。"),
+        report_row("需重点复查记录", "、".join(quality_flags) if quality_flags else "无明显高风险记录", "由低 R²、高 CV、低置信度、Re 偏高或人工偏差过大综合筛选。"),
+        "",
+        "## 8. 人工测量与 AI 测量对比",
+        "| 对比项 | 汇总结果 | 教学意义 |",
+        "|---|---:|---|",
+        report_row("人工 vt 相对偏差", summary_stat_text(metrics, "v_error", "", 4, percent=True), "反映人工计时、人工选段和读数反应误差。"),
+        report_row("人工 η₀ 相对偏差", summary_stat_text(metrics, "eta_error", "", 4, percent=True), "反映人工理想公式计算结果与 AI 理想参考的一致性。"),
+        report_row("人工结果完整率", f"{student_count}/{len(records)}", "若缺少人工值，说明学生还没有完成独立测量与计算环节。"),
+        "",
+        "## 9. AI实验不确定度说明",
+        "| 不确定度来源 | 平台默认取值或计算方式 | 进入报告的方式 |",
+        "|---|---|---|",
+        report_row("小球直径 d", "Δd=0.01 mm", "按游标卡尺最小分度估计，进入直径相关项。"),
+        report_row("量筒内径 D", "ΔD=0.01 mm", "按游标卡尺最小分度估计，进入壁面修正相关项。"),
+        report_row("液体深度 H", "ΔH=5 mm", "按 1 cm 刻度直尺的半分度估计，进入液深修正项。"),
+        report_row("匀速段时间 t", "Δt=0.02 s", "考虑视频帧间隔、选段边界和人工复核误差。"),
+        report_row("匀速段距离 l", "Δl=1.0 mm", "考虑标定后距离读数与曲线选段误差。"),
+        report_row("标定点误差", "Δl标定=0.5 mm", "由鼠标点击标定棒刻度点引入，是 AI 视觉测量新增的不确定度项。"),
+        report_row("扩展不确定度", "U=2u", "报告中默认按 k=2 给出 η ± U。"),
+        "",
+        "## 10. 综合改进建议",
+    ])
+    lines.extend(summary_advice(metrics))
+    lines.extend([
+        "",
+        "## 11. 报告使用说明",
+        "这份多次实验报告适合放在实验复盘、研究报告或答辩材料中，用于说明平台不仅能给出单次结果，还能对多次重复实验进行统计分析。正式提交前建议保留原始视频、实验记录 ID 和单次报告，便于追溯每个统计值来自哪一次实验。",
+    ])
+    return "\n".join(lines)
+
+
 def report_float(value):
     if value is None or value == "":
         return None
@@ -870,6 +1027,318 @@ def report_float(value):
         return float(value)
     except (TypeError, ValueError):
         return None
+
+
+def summary_metrics(run: dict) -> dict:
+    params = run.get("params") or {}
+    result = run.get("result") or {}
+    student = run.get("student") or {}
+    quality = run.get("quality") or {}
+    preprocessing = quality.get("preprocessing") or {}
+    segment = run.get("segment") or {}
+    velocity_curve = (run.get("curves") or {}).get("velocity") or []
+    segment_summary = describe_segment(segment, velocity_curve)
+    radius_mm = report_float(params.get("radius_mm"))
+    tube_diameter_mm = report_float(params.get("tube_diameter_mm"))
+    corrected = report_float(result.get("viscosity"))
+    ideal = report_float(result.get("ideal_viscosity"))
+    if ideal is None:
+        ideal = corrected
+    ai_relative_uncertainty = report_float(result.get("relative_uncertainty"))
+    propagated_uncertainty = summary_propagated_uncertainty(run, corrected)
+    return {
+        "id": run.get("id"),
+        "created_at": run.get("created_at") or "-",
+        "source": run.get("source"),
+        "liquid": params.get("liquid") or "-",
+        "temperature_c": report_float(params.get("temperature_c")),
+        "radius_mm": radius_mm,
+        "tube_diameter_mm": tube_diameter_mm,
+        "tube_ratio": (2 * radius_mm / tube_diameter_mm) if radius_mm and tube_diameter_mm else None,
+        "terminal_velocity": report_float(result.get("terminal_velocity")),
+        "ideal_viscosity": ideal,
+        "corrected_viscosity": corrected,
+        "ai_relative_uncertainty": ai_relative_uncertainty,
+        "ai_standard_uncertainty": (ideal * ai_relative_uncertainty) if ideal is not None and ai_relative_uncertainty is not None else None,
+        "ai_expanded_uncertainty": (2 * ideal * ai_relative_uncertainty) if ideal is not None and ai_relative_uncertainty is not None else None,
+        "propagated_relative_uncertainty": propagated_uncertainty.get("relative"),
+        "propagated_standard_uncertainty": propagated_uncertainty.get("standard"),
+        "propagated_expanded_uncertainty": propagated_uncertainty.get("expanded"),
+        "propagated_segment_distance_mm": propagated_uncertainty.get("segment_distance_mm"),
+        "propagated_segment_time_s": propagated_uncertainty.get("segment_time_s"),
+        "student_v": report_float(student.get("student_v")),
+        "student_eta": report_float(student.get("student_eta")),
+        "v_error": report_float(student.get("v_error")),
+        "eta_error": report_float(student.get("eta_error")),
+        "score": report_float(student.get("score")),
+        "r2": report_float(result.get("r2")),
+        "re": report_float(result.get("re")),
+        "wall_correction": report_float(result.get("wall_correction")),
+        "reynolds_correction": report_float(result.get("reynolds_correction")),
+        "tracking_confidence": report_float(result.get("tracking_confidence")),
+        "uniform_cv": report_float(quality.get("uniform_segment_cv") or segment.get("cv")),
+        "outlier_points": report_float(preprocessing.get("outlier_points")),
+        "dropped_points": report_float(preprocessing.get("dropped_points")),
+        "segment_duration": report_float(segment_summary.get("duration_s")),
+    }
+
+
+def summary_segment_span(run: dict, terminal_velocity: float | None) -> dict | None:
+    velocity_curve = ((run.get("curves") or {}).get("velocity") or [])
+    position_curve = ((run.get("curves") or {}).get("position") or [])
+    segment = run.get("segment") or {}
+    if not velocity_curve and not position_curve:
+        return None
+    start = int(segment.get("start") or 0)
+    end = int(segment.get("end") or (len(velocity_curve) - 1))
+    max_velocity_index = max(0, len(velocity_curve) - 1)
+    start = max(0, min(start, max_velocity_index))
+    end = max(start + 1, min(end, max_velocity_index))
+    start_v = velocity_curve[start] if velocity_curve else {}
+    end_v = velocity_curve[end] if velocity_curve and end < len(velocity_curve) else (velocity_curve[-1] if velocity_curve else {})
+    start_t = report_float(start_v.get("t"))
+    end_t = report_float(end_v.get("t"))
+    time_s = (end_t - start_t) if start_t is not None and end_t is not None else None
+    if time_s is None or time_s <= 0:
+        first = position_curve[0] if position_curve else {}
+        last = position_curve[-1] if position_curve else {}
+        first_t = report_float(first.get("t"))
+        last_t = report_float(last.get("t"))
+        time_s = (last_t - first_t) if first_t is not None and last_t is not None else None
+    if time_s is None or time_s <= 0:
+        return None
+    pos_start_index = min(start + 1, max(0, len(position_curve) - 1))
+    pos_end_index = min(end + 1, max(0, len(position_curve) - 1))
+    pos_start = position_curve[pos_start_index] if position_curve else {}
+    pos_end = position_curve[pos_end_index] if position_curve else {}
+    start_y = report_float(pos_start.get("y"))
+    end_y = report_float(pos_end.get("y"))
+    distance_m = abs(end_y - start_y) if start_y is not None and end_y is not None else None
+    if (distance_m is None or distance_m <= 0) and terminal_velocity is not None:
+        distance_m = abs(terminal_velocity) * time_s
+    if distance_m is None or distance_m <= 0:
+        return None
+    return {"time_s": time_s, "distance_m": distance_m}
+
+
+def summary_propagated_uncertainty(run: dict, eta: float | None) -> dict:
+    params = run.get("params") or {}
+    result = run.get("result") or {}
+    terminal_velocity = report_float(result.get("terminal_velocity"))
+    radius_mm = report_float(params.get("radius_mm"))
+    tube_diameter_mm = report_float(params.get("tube_diameter_mm"))
+    liquid_depth_mm = report_float(params.get("liquid_depth_mm"))
+    if eta is None or terminal_velocity is None or radius_mm is None or tube_diameter_mm is None or liquid_depth_mm is None:
+        return {}
+    span = summary_segment_span(run, terminal_velocity)
+    if not span:
+        return {}
+    d = radius_mm * 2
+    D = tube_diameter_mm
+    H = liquid_depth_mm
+    l = span["distance_m"] * 1000
+    t = span["time_s"]
+    if min(d, D, H, l, t) <= 0:
+        return {}
+    delta_d = 0.01
+    delta_t = 0.02
+    delta_l = 1.0
+    delta_tube = 0.01
+    delta_h = 5.0
+    delta_calibration = 0.5
+    wall_d = 1 + (2.4 * d) / D
+    depth_h = 1 + (1.6 * d) / H
+    diameter_coefficient = (2 / d) - (2.4 / (wall_d * D)) - (1.6 / (depth_h * H))
+    diameter_term = abs(diameter_coefficient * delta_d)
+    time_term = delta_t / max(t, 1e-12)
+    distance_term = delta_l / max(l, 1e-12)
+    tube_term = abs(((2.4 * d) / (wall_d * D * D)) * delta_tube)
+    depth_term = abs(((1.6 * d) / (depth_h * H * H)) * delta_h)
+    calibration_term = delta_calibration / max(l, 1e-12)
+    relative = math.hypot(diameter_term, time_term, distance_term, tube_term, depth_term, calibration_term)
+    standard = eta * relative
+    return {
+        "relative": relative,
+        "standard": standard,
+        "expanded": standard * 2,
+        "segment_distance_mm": l,
+        "segment_time_s": t,
+    }
+
+
+def summary_values(metrics: list[dict], key: str) -> list[float]:
+    values = []
+    for item in metrics:
+        value = report_float(item.get(key))
+        if value is not None and math.isfinite(value):
+            values.append(value)
+    return values
+
+
+def summary_stats(metrics: list[dict], key: str) -> dict:
+    values = summary_values(metrics, key)
+    if not values:
+        return {"n": 0, "mean": None, "stdev": None, "rsd": None, "min": None, "max": None}
+    mean = sum(values) / len(values)
+    if len(values) > 1:
+        variance = sum((value - mean) ** 2 for value in values) / (len(values) - 1)
+        stdev = math.sqrt(max(0.0, variance))
+    else:
+        stdev = 0.0
+    rsd = stdev / abs(mean) if mean else None
+    return {"n": len(values), "mean": mean, "stdev": stdev, "rsd": rsd, "min": min(values), "max": max(values)}
+
+
+def format_summary_number(value, unit: str = "", digits: int = 3, percent: bool = False) -> str:
+    number = report_float(value)
+    if number is None or not math.isfinite(number):
+        return "未填写"
+    if percent:
+        return f"{number * 100:.2f}%"
+    suffix = f" {unit}" if unit else ""
+    return f"{number:.{digits}f}{suffix}"
+
+
+def summary_stat_row(label: str, metrics: list[dict], key: str, unit: str, digits: int, interpretation: str, percent: bool = False) -> str:
+    stat = summary_stats(metrics, key)
+    return report_row(
+        label,
+        stat["n"],
+        format_summary_number(stat["mean"], unit, digits, percent),
+        format_summary_number(stat["stdev"], unit, digits, percent),
+        format_percent(stat["rsd"]) if stat["rsd"] is not None else "未填写",
+        format_summary_number(stat["min"], unit, digits, percent),
+        format_summary_number(stat["max"], unit, digits, percent),
+        interpretation,
+    )
+
+
+def summary_stat_text(metrics: list[dict], key: str, unit: str = "", digits: int = 3, percent: bool = False) -> str:
+    stat = summary_stats(metrics, key)
+    if not stat["n"]:
+        return "未填写"
+    mean = format_summary_number(stat["mean"], unit, digits, percent)
+    stdev = format_summary_number(stat["stdev"], unit, digits, percent)
+    return f"{mean} ± {stdev}（n={stat['n']}）"
+
+
+def summary_detail_row(item: dict) -> str:
+    return report_row(
+        item.get("id", "-"),
+        str(item.get("created_at") or "-").replace("T", " "),
+        item.get("liquid", "-"),
+        format_summary_number(item.get("temperature_c"), "℃", 1),
+        format_summary_number(item.get("terminal_velocity"), "m/s", 5),
+        format_summary_number(item.get("ideal_viscosity"), "Pa·s", 6),
+        format_summary_number(item.get("corrected_viscosity"), "Pa·s", 6),
+        format_summary_number(item.get("propagated_relative_uncertainty") or item.get("ai_relative_uncertainty"), "", 4, percent=True),
+        format_summary_number(item.get("propagated_expanded_uncertainty") or item.get("ai_expanded_uncertainty"), "Pa·s", 6),
+        format_summary_number(item.get("re"), "", 4),
+        format_summary_number(item.get("r2"), "", 4),
+        format_summary_number(item.get("tracking_confidence"), "", 4, percent=True),
+        format_summary_number(item.get("uniform_cv"), "", 4),
+        format_summary_number(item.get("eta_error"), "", 4, percent=True),
+        format_summary_number(item.get("score"), "分", 0),
+    )
+
+
+def summary_group_key(item: dict) -> str:
+    liquid = str(item.get("liquid") or "-")
+    temp = report_float(item.get("temperature_c"))
+    if temp is None:
+        return liquid
+    return f"{liquid} / {temp:.1f}℃"
+
+
+def summary_group_rows(metrics: list[dict]) -> list[str]:
+    groups: dict[str, list[dict]] = {}
+    for item in metrics:
+        groups.setdefault(summary_group_key(item), []).append(item)
+    if not groups:
+        return [report_row("暂无分组", 0, "-", "-", "-", "-", "-", "-")]
+    rows = []
+    for label in sorted(groups):
+        group = groups[label]
+        rows.append(report_row(
+            label,
+            len(group),
+            format_summary_number(summary_stats(group, "terminal_velocity")["mean"], "m/s", 5),
+            format_summary_number(summary_stats(group, "ideal_viscosity")["mean"], "Pa·s", 6),
+            format_summary_number(summary_stats(group, "ideal_viscosity")["stdev"], "Pa·s", 6),
+            format_percent(summary_stats(group, "ideal_viscosity")["rsd"]) if summary_stats(group, "ideal_viscosity")["rsd"] is not None else "未填写",
+            format_summary_number(summary_stats(group, "re")["mean"], "", 4),
+            format_summary_number(summary_stats(group, "score")["mean"], "分", 1),
+        ))
+    return rows
+
+
+def summary_conclusion(metrics: list[dict]) -> str:
+    count = len(metrics)
+    eta_stat = summary_stats(metrics, "ideal_viscosity")
+    vt_stat = summary_stats(metrics, "terminal_velocity")
+    re_stat = summary_stats(metrics, "re")
+    score_stat = summary_stats(metrics, "score")
+    uncertainty_stat = summary_stats(metrics, "propagated_expanded_uncertainty")
+    fragments = [f"本次共汇总 {count} 条实验记录"]
+    if eta_stat["n"]:
+        fragments.append(f"AI 理想粘滞系数均值为 {format_summary_number(eta_stat['mean'], 'Pa·s', 6)}，RSD 为 {format_percent(eta_stat['rsd']) if eta_stat['rsd'] is not None else '未填写'}")
+    if vt_stat["n"]:
+        fragments.append(f"终端速度均值为 {format_summary_number(vt_stat['mean'], 'm/s', 5)}")
+    if re_stat["n"]:
+        fragments.append(f"Re 均值为 {format_summary_number(re_stat['mean'], '', 4)}")
+    if score_stat["n"]:
+        fragments.append(f"平均评分为 {format_summary_number(score_stat['mean'], '分', 1)}")
+    if uncertainty_stat["n"]:
+        fragments.append(f"平均扩展不确定度 U(k=2) 为 {format_summary_number(uncertainty_stat['mean'], 'Pa·s', 6)}")
+    quality_flags = summary_quality_flags(metrics)
+    if quality_flags:
+        fragments.append(f"需要重点复查 {len(quality_flags)} 条记录")
+    else:
+        fragments.append("未发现明显高风险记录")
+    return "；".join(fragments) + "。"
+
+
+def summary_quality_flags(metrics: list[dict]) -> list[str]:
+    flags = []
+    for item in metrics:
+        reasons = []
+        if (item.get("r2") is not None) and item["r2"] < 0.985:
+            reasons.append("R²偏低")
+        if (item.get("uniform_cv") is not None) and item["uniform_cv"] > 0.08:
+            reasons.append("匀速段波动大")
+        if (item.get("tracking_confidence") is not None) and item["tracking_confidence"] < 0.72:
+            reasons.append("追踪置信度低")
+        if (item.get("re") is not None) and item["re"] >= 1:
+            reasons.append("Re偏高")
+        if (item.get("eta_error") is not None) and item["eta_error"] > 0.2:
+            reasons.append("人工η偏差大")
+        if reasons:
+            flags.append(f"#{item.get('id', '-')}（{'、'.join(reasons)}）")
+    return flags[:12]
+
+
+def summary_advice(metrics: list[dict]) -> list[str]:
+    advice = []
+    eta_rsd = summary_stats(metrics, "ideal_viscosity").get("rsd")
+    confidence = summary_stats(metrics, "tracking_confidence").get("mean")
+    re_mean = summary_stats(metrics, "re").get("mean")
+    cv_mean = summary_stats(metrics, "uniform_cv").get("mean")
+    if eta_rsd is not None and eta_rsd > 0.08:
+        advice.append("- 粘滞系数重复性波动较大，建议固定释放高度、摄像机位置和背光条件，并至少重复 5 次后剔除明显异常记录。")
+    else:
+        advice.append("- 当前多次测量的粘滞系数离散程度可作为重复性分析依据，正式报告中建议同时给出均值、标准差和 RSD。")
+    if confidence is not None and confidence < 0.78:
+        advice.append("- 平均追踪置信度偏低，优先优化背光、对焦、小球颜色对比和 ROI 范围，再重新采集。")
+    if cv_mean is not None and cv_mean > 0.06:
+        advice.append("- 匀速段速度离散度偏高，建议延长完整下落观察区间，并复核是否存在底部反光、气泡或小球偏心下落。")
+    if re_mean is not None and re_mean >= 1:
+        advice.append("- Re 平均值偏高，说明 Stokes 条件风险较大，可换用更小半径小球或更高粘度液体。")
+    else:
+        advice.append("- 若 Re 和 K壁 均较稳定，可在答辩中强调 AI 不仅输出结果，还能自动检查模型适用条件。")
+    if not any(item.get("student_eta") is not None for item in metrics):
+        advice.append("- 当前汇总记录缺少人工测量值，建议先让学生补填人工 vt 和 η₀，否则难以体现 AI 与传统方法的对比训练。")
+    return advice
+
 
 
 def report_row(*cells) -> str:

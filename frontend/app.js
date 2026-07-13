@@ -15,7 +15,10 @@ const LIVE_SAMPLE_FPS_WINDOW_MS = 1000;
 const FALL_OFFSET_MONITOR_ENABLED = true;
 const LOCAL_API_BASE_URL = "http://127.0.0.1:8877";
 const HOSTED_API_BASE_URL = "https://42.194.177.159";
-const configuredApiBaseUrl = new URLSearchParams(window.location.search).get("api") || window.localStorage?.getItem("fallingBallApiBase") || "";
+const apiQueryBaseUrl = new URLSearchParams(window.location.search).get("api") || "";
+const storedApiBaseUrl = window.localStorage?.getItem("fallingBallApiBase") || "";
+const isLocalPageHost = ["127.0.0.1", "localhost"].includes(window.location.hostname);
+const configuredApiBaseUrl = apiQueryBaseUrl || (isLocalPageHost ? "" : storedApiBaseUrl);
 const API_BASE_URL = (() => {
   const configured = configuredApiBaseUrl;
   if (configured) return configured.replace(/\/$/, "");
@@ -24,7 +27,7 @@ const API_BASE_URL = (() => {
   if (window.location.protocol === "file:") return HOSTED_API_BASE_URL;
   return "";
 })();
-const API_BASE_EXPLICIT = Boolean(configuredApiBaseUrl);
+const API_BASE_EXPLICIT = Boolean(apiQueryBaseUrl || (!isLocalPageHost && storedApiBaseUrl));
 
 const state = {
   latest: null,
@@ -270,6 +273,7 @@ const el = {
   recordsBody: document.getElementById("recordsBody"),
   recordsSummary: document.getElementById("recordsSummary"),
   selectAllRecords: document.getElementById("selectAllRecords"),
+  summarySelectedRecordsBtn: document.getElementById("summarySelectedRecordsBtn"),
   deleteSelectedRecordsBtn: document.getElementById("deleteSelectedRecordsBtn"),
   chatLog: document.getElementById("chatLog"),
   chatForm: document.getElementById("chatForm"),
@@ -883,6 +887,7 @@ const assetMap = {
   buttons: {
     loadRecord: "./assets/generated/buttons/load-record.png",
     diagnostic: "./assets/generated/icons/diagnostic.png",
+    velocityCurve: "./assets/generated/buttons/velocity-curve.png",
   },
   diagnostic: {
     ok: "./assets/generated/icons/calibration.png",
@@ -1713,7 +1718,7 @@ function apiUrl(path, base = API_BASE_URL) {
   return `${base}${path}`;
 }
 
-async function api(path, options = {}) {
+async function apiResponse(path, options = {}) {
   const bases = [API_BASE_URL];
   const canFallbackToHosted = !API_BASE_EXPLICIT && !/^https?:\/\//i.test(path) && API_BASE_URL !== HOSTED_API_BASE_URL;
   if (canFallbackToHosted) bases.push(HOSTED_API_BASE_URL);
@@ -1728,6 +1733,9 @@ async function api(path, options = {}) {
           ...(options.headers || {}),
         },
       });
+      if (response && [404, 405, 501].includes(response.status) && bases.indexOf(base) < bases.length - 1) {
+        continue;
+      }
       break;
     } catch (error) {
       lastConnectionError = error;
@@ -1740,6 +1748,11 @@ async function api(path, options = {}) {
     if (lastConnectionError) throw lastConnectionError;
     throw new Error("无法连接后端。");
   }
+  return response;
+}
+
+async function api(path, options = {}) {
+  const response = await apiResponse(path, options);
   if (!response.ok) {
     let detail = `${response.status} ${response.statusText}`;
     try {
@@ -5604,7 +5617,11 @@ function renderRecordRow(row) {
       <td class="record-row-actions">
         <button class="table-action" type="button" data-load-run="${row.id}">
           <img src="${assetMap.buttons.loadRecord}" alt="" />
-          <span>载入</span>
+          <span>载入复盘</span>
+        </button>
+        <button class="table-action" type="button" data-review-run="${row.id}">
+          <img src="${assetMap.buttons.velocityCurve}" alt="" />
+          <span>回顾实验</span>
         </button>
         <button class="table-action danger" type="button" data-delete-run="${row.id}">
           <img src="${assetMap.buttons.diagnostic}" alt="" />
@@ -5627,6 +5644,11 @@ function syncRecordSelectionControls() {
     el.deleteSelectedRecordsBtn.disabled = selected === 0;
     const label = el.deleteSelectedRecordsBtn.querySelector("span");
     if (label) label.textContent = selected > 0 ? `删除所选 ${selected}` : "删除所选";
+  }
+  if (el.summarySelectedRecordsBtn) {
+    el.summarySelectedRecordsBtn.disabled = selected < 2;
+    const label = el.summarySelectedRecordsBtn.querySelector("span");
+    if (label) label.textContent = selected >= 2 ? `汇总报告 ${selected}` : "汇总报告";
   }
 }
 
@@ -5674,13 +5696,54 @@ async function loadRun(id) {
       el.videoReadinessDetail.textContent = "这条记录没有保存摄像机视频，只能回看速度曲线、粘度结果和不确定度。";
     }
     renderRun(run);
-    switchView("workspace");
-    showToast(`已载入记录 #${id}`);
+    seedReviewAgent(run);
+    showToast(`已载入记录 #${id}，可以在右侧继续问复盘问题`);
   } catch (error) {
     showToast(`载入失败：${error.message}`);
   } finally {
     setButtonLoading(activeButton, false);
   }
+}
+
+async function reviewRun(id) {
+  const activeButton = el.recordsBody.querySelector(`[data-review-run="${id}"]`);
+  setButtonLoading(activeButton, true, "打开中");
+  try {
+    const run = await api(`/api/runs/${id}`);
+    state.latest = run;
+    if (run.video?.url) {
+      setDataSource("video");
+      showRecordedVideo(run);
+    } else if (state.source === "video") {
+      resetVideoPreview();
+      el.videoReadinessLabel.textContent = "无历史录像";
+      el.videoReadinessDetail.textContent = "这条记录没有保存摄像机视频，可以回顾曲线、实验数据、不确定度和报告。";
+    }
+    renderRun(run);
+    seedReviewAgent(run);
+    switchView("workspace");
+    showToast(`已打开记录 #${id} 的实验回顾`);
+  } catch (error) {
+    showToast(`实验回顾打开失败：${error.message}`);
+  } finally {
+    setButtonLoading(activeButton, false);
+  }
+}
+
+function seedReviewAgent(run) {
+  if (!el.chatLog || !run?.id) return;
+  const result = run.result || {};
+  const idealEta = idealViscosityFromRun(run);
+  const parts = [
+    `已载入记录 #${run.id}。`,
+    `AI 终端速度 ${formatMeasurement(result.terminal_velocity, "m/s", 4)}，`,
+    `理想粘滞系数 ${idealEta === null ? "--" : `${formatPaS(idealEta)} Pa·s`}，`,
+    `修正粘滞系数 ${formatMeasurement(result.viscosity, "Pa·s", 4)}，`,
+    `Re ${finiteNumber(result.re) === null ? "--" : Number(result.re).toFixed(3)}。`,
+    "你可以直接问：为什么结果偏差大、这次匀速段是否可信、应该怎么重做更稳定。"
+  ];
+  el.chatLog.innerHTML = "";
+  addMessage("ai", parts.join(""));
 }
 
 async function scoreAndGenerateReport() {
@@ -5762,6 +5825,51 @@ async function deleteSelectedRecords() {
     showToast(`批量删除失败：${error.message}`);
   } finally {
     setButtonLoading(el.deleteSelectedRecordsBtn, false);
+    syncRecordSelectionControls();
+  }
+}
+
+async function downloadSelectedSummaryReport() {
+  const ids = state.records
+    .map((row) => String(row.id))
+    .filter((id) => state.selectedRecordIds.has(id));
+  if (ids.length < 2) {
+    showToast("请至少勾选 2 条实验记录，再生成汇总报告。");
+    return;
+  }
+  setButtonLoading(el.summarySelectedRecordsBtn, true, "生成中");
+  try {
+    const response = await apiResponse("/api/runs/summary-report", {
+      method: "POST",
+      body: JSON.stringify({ ids }),
+    });
+    if (!response.ok) {
+      let detail = `${response.status} ${response.statusText}`;
+      try {
+        const payload = await response.json();
+        detail = payload.error || detail;
+      } catch {
+        detail = await response.text();
+      }
+      if ([404, 405, 501].includes(response.status)) {
+        detail = "当前连接的后端还没有汇总报告接口，请刷新页面并确认使用本地 http://127.0.0.1:8877，或重启/同步云端服务。";
+      }
+      throw new Error(detail);
+    }
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `落球法AI视觉测量多次实验汇总报告_${ids.length}条.md`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    showToast(`已生成 ${ids.length} 条记录的汇总报告。`);
+  } catch (error) {
+    showToast(`汇总报告生成失败：${error.message}`);
+  } finally {
+    setButtonLoading(el.summarySelectedRecordsBtn, false);
     syncRecordSelectionControls();
   }
 }
@@ -6295,6 +6403,7 @@ function bind() {
   el.selectAllRecords?.addEventListener("change", () => {
     toggleAllRecords(el.selectAllRecords.checked);
   });
+  el.summarySelectedRecordsBtn?.addEventListener("click", downloadSelectedSummaryReport);
   el.deleteSelectedRecordsBtn?.addEventListener("click", deleteSelectedRecords);
   el.scoreReportBtn?.addEventListener("click", scoreAndGenerateReport);
   el.presetBtn.addEventListener("click", () => {
@@ -6395,6 +6504,11 @@ function bind() {
     const loadButton = event.target.closest("[data-load-run]");
     if (loadButton) {
       loadRun(loadButton.dataset.loadRun);
+      return;
+    }
+    const reviewButton = event.target.closest("[data-review-run]");
+    if (reviewButton) {
+      reviewRun(reviewButton.dataset.reviewRun);
       return;
     }
     const deleteButton = event.target.closest("[data-delete-run]");

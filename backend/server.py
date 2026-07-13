@@ -9,12 +9,12 @@ from urllib.parse import parse_qs, unquote, urlparse
 try:
     from .modules import module_summary, readiness_summary
     from .physics import analyze_frames, analyze_trajectory, answer_question, build_diagnostics, build_params, build_simulation, inspect_video_metadata, to_optional_float
-    from .storage import VIDEO_DIR, build_report_text, delete_run, delete_runs, get_run, init_db, latest_run, list_runs, read_remote_video_asset, read_supabase_video_asset, save_run, save_run_video, storage_status, update_run_payload, use_supabase_storage
+    from .storage import VIDEO_DIR, build_report_text, build_summary_report_text, delete_run, delete_runs, get_run, get_runs, init_db, latest_run, list_runs, read_remote_video_asset, read_supabase_video_asset, save_run, save_run_video, storage_status, update_run_payload, use_supabase_storage
     from .vision import build_video_track_config, detect_ball_from_image_bytes, extract_trajectory_from_video_bytes, inspect_vision_runtime
 except ImportError:
     from modules import module_summary, readiness_summary
     from physics import analyze_frames, analyze_trajectory, answer_question, build_diagnostics, build_params, build_simulation, inspect_video_metadata, to_optional_float
-    from storage import VIDEO_DIR, build_report_text, delete_run, delete_runs, get_run, init_db, latest_run, list_runs, read_remote_video_asset, read_supabase_video_asset, save_run, save_run_video, storage_status, update_run_payload, use_supabase_storage
+    from storage import VIDEO_DIR, build_report_text, build_summary_report_text, delete_run, delete_runs, get_run, get_runs, init_db, latest_run, list_runs, read_remote_video_asset, read_supabase_video_asset, save_run, save_run_video, storage_status, update_run_payload, use_supabase_storage
     from vision import build_video_track_config, detect_ball_from_image_bytes, extract_trajectory_from_video_bytes, inspect_vision_runtime
 
 
@@ -113,6 +113,23 @@ class PlatformHandler(BaseHTTPRequestHandler):
             payload = self.read_json()
             deleted = delete_runs(payload.get("ids", []))
             self.send_json({"deleted": deleted})
+            return
+        if parsed.path == "/api/runs/summary-report":
+            payload = self.read_json()
+            run_ids = []
+            for raw_id in payload.get("ids", []):
+                try:
+                    run_id = int(raw_id)
+                except (TypeError, ValueError):
+                    continue
+                if run_id > 0:
+                    run_ids.append(run_id)
+            runs = [enrich_run_analysis(run) for run in get_runs(run_ids)]
+            runs = [run for run in runs if run]
+            if not runs:
+                self.send_json({"error": "没有找到可汇总的实验记录。"}, status=400)
+                return
+            self.send_text(build_summary_report_text(runs), filename="selected-runs-summary-report.md")
             return
         if parsed.path == "/api/measurements/trajectory":
             payload = self.read_json()

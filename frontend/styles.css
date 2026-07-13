@@ -5520,7 +5520,8 @@ input[type="range"]:focus-visible {
 
 .diagnosis-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1fr);
+  grid-template-columns: minmax(520px, 1.15fr) minmax(360px, 0.85fr);
+  align-items: start;
   gap: 18px;
 }
 
@@ -5528,16 +5529,16 @@ input[type="range"]:focus-visible {
 .diagnosis-view .assistant-section {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
-  min-height: 0;
+  min-height: calc(100dvh - 190px);
 }
 
 .diagnosis-view .table-wrap {
   min-height: 300px;
-  max-height: min(52dvh, 560px);
+  max-height: min(58dvh, 640px);
 }
 
 .diagnosis-view .assistant-grid {
-  grid-template-columns: minmax(220px, 0.34fr) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
   align-items: stretch;
 }
 
@@ -5553,7 +5554,7 @@ input[type="range"]:focus-visible {
 
 .diagnosis-view .chat-log {
   min-height: 220px;
-  max-height: min(44dvh, 440px);
+  max-height: min(48dvh, 520px);
 }
 
 .record-actions {
@@ -5778,6 +5779,7 @@ td {
   z-index: 1;
   background: #fff;
   box-shadow: -12px 0 18px -18px rgba(28, 42, 35, 0.45);
+  min-width: 286px;
 }
 
 th.record-row-actions {
@@ -5820,9 +5822,9 @@ td button {
   position: relative;
   display: inline-flex;
   align-items: center;
-  gap: 7px;
-  min-height: 42px;
-  padding: 6px 11px 6px 6px;
+  gap: 6px;
+  min-height: 38px;
+  padding: 5px 9px 5px 5px;
   border-radius: 12px;
   background: var(--accent-soft);
   border: 1px solid rgba(50, 122, 102, 0.14);
@@ -5841,9 +5843,9 @@ td button {
 }
 
 .table-action img {
-  width: 30px;
-  height: 30px;
-  border-radius: 10px;
+  width: 28px;
+  height: 28px;
+  border-radius: 9px;
   object-fit: cover;
 }
 
@@ -6305,9 +6307,7 @@ td button {
     grid-column: 1 / -1;
   }
 
-  .operations-grid,
-  .diagnosis-layout,
-  .diagnosis-view .assistant-grid {
+  .operations-grid {
     grid-template-columns: 1fr;
   }
 }
