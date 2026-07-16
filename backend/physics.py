@@ -1,3 +1,4 @@
+import heapq
 import json
 import math
 import os
@@ -294,39 +295,91 @@ def find_uniform_segment(velocities: list[dict]) -> dict:
         window_sizes = [max(8, n - 2)]
     best_start = min(int(n * 0.45), max(0, n - window_sizes[0] - 1))
     best = {"start": best_start, "end": best_start + window_sizes[0], "score": float("inf")}
+    values = [float(point.get("v_segment", point["v"])) for point in velocities]
+    times = [float(point["t"]) for point in velocities]
+    confidences = [float(point.get("confidence", 1.0)) for point in velocities]
+    weights = [max(0.001, value) for value in confidences]
 
+    def prefix(items: list[float]) -> list[float]:
+        totals = [0.0]
+        for item in items:
+            totals.append(totals[-1] + item)
+        return totals
+
+    def span(totals: list[float], start: int, end: int) -> float:
+        return totals[end] - totals[start]
+
+    value_sum = prefix(values)
+    value_square_sum = prefix([value * value for value in values])
+    confidence_sum = prefix(confidences)
+    weight_sum = prefix(weights)
+    weighted_time_sum = prefix([weight * time for weight, time in zip(weights, times)])
+    weighted_value_sum = prefix([weight * value for weight, value in zip(weights, values)])
+    weighted_time_square_sum = prefix([weight * time * time for weight, time in zip(weights, times)])
+    weighted_time_value_sum = prefix([weight * time * value for weight, time, value in zip(weights, times, values)])
+    shortlist: list[tuple[float, int, dict]] = []
+    shortlist_limit = 96
+    candidate_index = 0
+
+    # Scan every window with O(1) prefix statistics, then retain only the most
+    # promising candidates for the original robust MAD and weighted-fit pass.
     for window_size in window_sizes:
         for start in range(int(n * 0.16), n - window_size):
-            selected_points = velocities[start : start + window_size]
-            selected = [point.get("v_segment", point["v"]) for point in selected_points]
-            valid_conf = [point.get("confidence", 1.0) for point in selected_points]
-            avg_conf = mean(valid_conf) if valid_conf else 1.0
-            avg = mean(selected)
+            end = start + window_size
+            avg = span(value_sum, start, end) / window_size
             if avg <= 0:
                 continue
-            sigma = robust_sigma(selected)
-            cv = sigma / avg if avg else 0
-            fit = weighted_linear_fit(
-                [{"x": point["t"], "y": point.get("v_segment", point["v"]), "weight": point.get("confidence", 1.0)} for point in selected_points]
-            )
-            slope_penalty = abs(fit["slope"]) / avg
+            variance = max(0.0, span(value_square_sum, start, end) / window_size - avg * avg)
+            approx_cv = math.sqrt(variance) / avg
+            avg_conf = span(confidence_sum, start, end) / window_size
+            sw = span(weight_sum, start, end)
+            sx = span(weighted_time_sum, start, end)
+            sy = span(weighted_value_sum, start, end)
+            sxx = span(weighted_time_square_sum, start, end) - sx * sx / max(sw, 0.001)
+            sxy = span(weighted_time_value_sum, start, end) - sx * sy / max(sw, 0.001)
+            slope = 0.0 if sxx <= 1e-15 else sxy / sxx
+            slope_penalty = abs(slope) / avg
             center_ratio = (start + window_size / 2) / max(1, n)
             early_penalty = 0.055 if start < n * 0.28 else 0
             plateau_position_penalty = max(0.0, 0.64 - center_ratio) * 0.055
             short_penalty = 0.018 if window_size < n * 0.22 else 0
             confidence_penalty = (1 - avg_conf) * 0.11
-            score = cv + slope_penalty * 8 + early_penalty + plateau_position_penalty + short_penalty + confidence_penalty
-            if score < best["score"]:
-                best = {
-                    "start": start,
-                    "end": start + window_size,
-                    "score": score,
-                    "cv": cv,
-                    "slope_penalty": slope_penalty,
-                    "avg_confidence": avg_conf,
-                    "window_size": window_size,
-                    "center_ratio": center_ratio,
-                }
+            approx_score = approx_cv + slope_penalty * 8 + early_penalty + plateau_position_penalty + short_penalty + confidence_penalty
+            candidate = {"start": start, "end": end, "window_size": window_size, "center_ratio": center_ratio}
+            heap_entry = (-approx_score, candidate_index, candidate)
+            candidate_index += 1
+            if len(shortlist) < shortlist_limit:
+                heapq.heappush(shortlist, heap_entry)
+            elif approx_score < -shortlist[0][0]:
+                heapq.heapreplace(shortlist, heap_entry)
+
+    for _, _, candidate in shortlist:
+        start = candidate["start"]
+        end = candidate["end"]
+        selected_points = velocities[start:end]
+        selected = values[start:end]
+        avg = mean(selected)
+        if avg <= 0:
+            continue
+        avg_conf = mean(confidences[start:end])
+        cv = robust_sigma(selected) / avg
+        fit = weighted_linear_fit(
+            [{"x": point["t"], "y": point.get("v_segment", point["v"]), "weight": point.get("confidence", 1.0)} for point in selected_points]
+        )
+        slope_penalty = abs(fit["slope"]) / avg
+        early_penalty = 0.055 if start < n * 0.28 else 0
+        plateau_position_penalty = max(0.0, 0.64 - candidate["center_ratio"]) * 0.055
+        short_penalty = 0.018 if candidate["window_size"] < n * 0.22 else 0
+        confidence_penalty = (1 - avg_conf) * 0.11
+        score = cv + slope_penalty * 8 + early_penalty + plateau_position_penalty + short_penalty + confidence_penalty
+        if score < best["score"]:
+            best = {
+                **candidate,
+                "score": score,
+                "cv": cv,
+                "slope_penalty": slope_penalty,
+                "avg_confidence": avg_conf,
+            }
     return best
 
 

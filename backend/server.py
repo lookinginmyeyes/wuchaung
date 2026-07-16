@@ -45,6 +45,8 @@ def enrich_run_analysis(run: dict | None) -> dict | None:
 
 
 class PlatformHandler(BaseHTTPRequestHandler):
+    protocol_version = "HTTP/1.1"
+
     def end_headers(self) -> None:
         self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
