@@ -3253,7 +3253,7 @@ async function postLiveFrame(blob, frameTimestamp, frameIndex) {
     frame: String(frameIndex),
     t: String(frameTimestamp.toFixed(4)),
     min_radius_px: "4",
-    max_radius_px: "120",
+    max_radius_px: state.roiRect ? "120" : "80",
     detection_mode: "realtime",
   });
   if (state.liveIgnoreZones.length) {
