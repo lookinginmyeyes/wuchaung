@@ -30,7 +30,6 @@ class VideoTrackConfig:
     calibration_tick_spacing_m: float | None = None
     axis_calibration_points: tuple[tuple[float, float], ...] | None = None
     ignore_zones: tuple[tuple[float, float, float], ...] | None = None
-    realtime_mode: bool = False
 
 
 def build_video_track_config(payload: dict[str, Any]) -> VideoTrackConfig:
@@ -80,7 +79,6 @@ def build_video_track_config(payload: dict[str, Any]) -> VideoTrackConfig:
         calibration_tick_spacing_m=_optional_float(payload.get("calibration_tick_spacing_m")),
         axis_calibration_points=_parse_axis_calibration_points(payload.get("axis_calibration_points")),
         ignore_zones=_parse_ignore_zones(payload.get("ignore_zones")),
-        realtime_mode=str(payload.get("detection_mode", "")).lower() in {"fast", "live", "realtime"},
     )
 
 
@@ -340,9 +338,6 @@ def detect_ball(frame, config: VideoTrackConfig) -> dict[str, float | str] | Non
     import cv2 as cv  # type: ignore
     import numpy as np  # type: ignore
 
-    if config.realtime_mode:
-        return detect_ball_realtime(frame, config)
-
     frame_h, frame_w = frame.shape[:2]
     gray = cv.cvtColor(frame, cv.COLOR_BGR2GRAY)
     gray = cv.medianBlur(gray, 5)
@@ -442,97 +437,6 @@ def detect_ball(frame, config: VideoTrackConfig) -> dict[str, float | str] | Non
     _, fill_ratio, area, x, y, radius = sorted(candidates, key=lambda item: item[0], reverse=True)[0]
     confidence = max(0.35, min(0.78, 0.45 + fill_ratio * 0.35))
     return {"x": float(x), "y": float(y), "radius": float(radius), "confidence": confidence, "method": "contour_fallback"}
-
-
-def detect_ball_realtime(frame, config: VideoTrackConfig) -> dict[str, float | str] | None:
-    """Low-latency detector for browser frames; offline video keeps the exhaustive detector."""
-    import cv2 as cv  # type: ignore
-
-    frame_h, frame_w = frame.shape[:2]
-    gray = cv.cvtColor(frame, cv.COLOR_BGR2GRAY)
-    gray = cv.medianBlur(gray, 5)
-
-    # The strict first pass is both fast and reliable on normal camera frames.
-    # Unlike the offline detector, realtime mode never fans out into six Hough passes.
-    hough = cv.HoughCircles(
-        gray,
-        cv.HOUGH_GRADIENT,
-        dp=1.2,
-        minDist=max(5, config.min_radius_px * 2),
-        param1=90,
-        param2=28,
-        minRadius=config.min_radius_px,
-        maxRadius=config.max_radius_px or max(8, int(min(frame_w, frame_h) * 0.18)),
-    )
-    if hough is not None:
-        for circle in sorted(hough[0], key=lambda item: item[2], reverse=True):
-            x, y, radius = (float(circle[0]), float(circle[1]), float(circle[2]))
-            if _is_ignored_detection(x, y, frame_w, frame_h, config):
-                continue
-            darkness = _dark_blob_score(gray, x, y, radius)
-            if darkness >= 0.26:
-                return {
-                    "x": x,
-                    "y": y,
-                    "radius": radius,
-                    "confidence": 0.82,
-                    "method": "realtime_hough",
-                }
-
-    # Backlit scenes often produce a clean dark contour, so use that as the only fallback.
-    _, binary = cv.threshold(gray, 0, 255, cv.THRESH_BINARY_INV + cv.THRESH_OTSU)
-    kernel = cv.getStructuringElement(cv.MORPH_ELLIPSE, (3, 3))
-    binary = cv.morphologyEx(binary, cv.MORPH_OPEN, kernel, iterations=1)
-    binary = cv.morphologyEx(binary, cv.MORPH_CLOSE, kernel, iterations=1)
-    return _best_realtime_contour(gray, binary, config)
-
-
-def _best_realtime_contour(gray, binary, config: VideoTrackConfig) -> dict[str, float | str] | None:
-    import cv2 as cv  # type: ignore
-
-    frame_h, frame_w = gray.shape[:2]
-    contours, _ = cv.findContours(binary, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)
-    min_radius = max(1, config.min_radius_px)
-    max_radius = config.max_radius_px or max(8, int(min(frame_w, frame_h) * 0.18))
-    min_area = max(6.0, math.pi * min_radius * min_radius * 0.5)
-    candidates = []
-    for contour in contours:
-        area = float(cv.contourArea(contour))
-        if area < min_area:
-            continue
-        (x, y), radius = cv.minEnclosingCircle(contour)
-        if radius < min_radius or radius > max_radius:
-            continue
-        if _is_ignored_detection(float(x), float(y), frame_w, frame_h, config):
-            continue
-        _, _, width, height = cv.boundingRect(contour)
-        aspect = max(width, height) / max(1, min(width, height))
-        if aspect > 1.9:
-            continue
-        circle_area = math.pi * radius * radius
-        fill_ratio = area / max(1.0, circle_area)
-        if fill_ratio < 0.45:
-            continue
-        perimeter = float(cv.arcLength(contour, True))
-        compactness = min(1.0, (4 * math.pi * area) / max(1.0, perimeter * perimeter))
-        if compactness < 0.42:
-            continue
-        darkness = _dark_blob_score(gray, float(x), float(y), float(radius))
-        if darkness < 0.24:
-            continue
-        score = fill_ratio * 0.42 + compactness * 0.33 + darkness * 0.25
-        candidates.append((score, fill_ratio, darkness, float(x), float(y), float(radius)))
-    if not candidates:
-        return None
-    score, _fill_ratio, darkness, x, y, radius = max(candidates, key=lambda item: item[0])
-    confidence = max(0.5, min(0.82, 0.42 + score * 0.34 + darkness * 0.08))
-    return {
-        "x": x,
-        "y": y,
-        "radius": radius,
-        "confidence": confidence,
-        "method": "realtime_contour",
-    }
 
 
 def _is_ignored_detection(x_px: float, y_px: float, width: int, height: int, config: VideoTrackConfig) -> bool:

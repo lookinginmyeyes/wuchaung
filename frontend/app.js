@@ -1,23 +1,17 @@
-const LIVE_CAMERA_WIDTH = 1280;
-const LIVE_CAMERA_HEIGHT = 720;
-const LIVE_CAMERA_FPS = 30;
-const LIVE_FRAME_TARGET_FPS = 15;
+const LIVE_FRAME_TARGET_FPS = 60;
 const LIVE_FRAME_INTERVAL_MS = Math.round(1000 / LIVE_FRAME_TARGET_FPS);
-const LIVE_FRAME_MAX_WIDTH = 720;
-const LIVE_FRAME_MAX_HEIGHT = 720;
-const LIVE_FRAME_JPEG_QUALITY = 0.72;
+const LIVE_FRAME_MAX_WIDTH = 1920;
+const LIVE_FRAME_JPEG_QUALITY = 0.9;
 const LIVE_MIN_TRACK_CONFIDENCE = 0.38;
 const LIVE_STATIC_POINT_LIMIT = 5;
 const LIVE_STATIC_POINT_MATCH_NORM = 0.006;
 const LIVE_STATIC_POINT_RADIUS_NORM = 0.018;
 const LIVE_STATIC_POINT_MAX_ZONES = 8;
-const LIVE_PREVIEW_UI_INTERVAL_MS = 200;
-const LIVE_CHART_INTERVAL_MS = 200;
+const LIVE_CHART_INTERVAL_MS = 120;
 const LIVE_BACKEND_FAILURE_LIMIT = 5;
 const LIVE_TRAJECTORY_LIMIT = 2400;
-const LIVE_MAX_IN_FLIGHT_FRAMES = 1;
+const LIVE_MAX_IN_FLIGHT_FRAMES = 3;
 const LIVE_SAMPLE_FPS_WINDOW_MS = 1000;
-const LIVE_RECORDING_BITRATE = 3_500_000;
 const FALL_OFFSET_MONITOR_ENABLED = true;
 const LOCAL_API_BASE_URL = "http://127.0.0.1:8877";
 const HOSTED_API_BASE_URL = "https://42.194.177.159";
@@ -68,8 +62,6 @@ const state = {
   liveSampleWindowStart: 0,
   liveSampleWindowFrames: 0,
   liveMeasuredSampleFps: 0,
-  liveProcessingLatencyMs: 0,
-  lastLivePreviewRenderAt: 0,
   liveChartDrawTimer: null,
   lastLiveChartDrawAt: 0,
   liveFrameBusy: false,
@@ -2804,33 +2796,22 @@ async function startLiveCamera() {
     const videoConstraints = selectedDeviceId
       ? {
           deviceId: { exact: selectedDeviceId },
-          width: { ideal: LIVE_CAMERA_WIDTH, max: LIVE_CAMERA_WIDTH },
-          height: { ideal: LIVE_CAMERA_HEIGHT, max: LIVE_CAMERA_HEIGHT },
-          frameRate: { ideal: LIVE_CAMERA_FPS, max: LIVE_CAMERA_FPS },
-          resizeMode: { ideal: "crop-and-scale" },
+          width: { ideal: 1920, max: 1920 },
+          height: { ideal: 1080, max: 1080 },
+          frameRate: { ideal: 60, max: 60 },
         }
       : {
           facingMode: "environment",
-          width: { ideal: LIVE_CAMERA_WIDTH, max: LIVE_CAMERA_WIDTH },
-          height: { ideal: LIVE_CAMERA_HEIGHT, max: LIVE_CAMERA_HEIGHT },
-          frameRate: { ideal: LIVE_CAMERA_FPS, max: LIVE_CAMERA_FPS },
-          resizeMode: { ideal: "crop-and-scale" },
+          width: { ideal: 1920, max: 1920 },
+          height: { ideal: 1080, max: 1080 },
+          frameRate: { ideal: 60, max: 60 },
         };
-    let stream;
-    try {
-      stream = await navigator.mediaDevices.getUserMedia({ video: videoConstraints, audio: false });
-    } catch (error) {
-      if (error.name !== "OverconstrainedError") throw error;
-      const relaxedConstraints = selectedDeviceId
-        ? { deviceId: { exact: selectedDeviceId }, frameRate: { ideal: LIVE_CAMERA_FPS } }
-        : { facingMode: "environment", frameRate: { ideal: LIVE_CAMERA_FPS } };
-      stream = await navigator.mediaDevices.getUserMedia({ video: relaxedConstraints, audio: false });
-    }
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: videoConstraints,
+      audio: false,
+    });
     state.liveStream = stream;
-    const videoTrack = stream.getVideoTracks()[0];
-    if (videoTrack && "contentHint" in videoTrack) videoTrack.contentHint = "motion";
     el.livePreview.srcObject = stream;
-    await el.livePreview.play();
     el.livePlaceholder.hidden = true;
     el.startLiveCameraBtn.disabled = true;
     el.stopLiveCameraBtn.disabled = false;
@@ -2843,20 +2824,11 @@ async function startLiveCamera() {
     if (el.liveModelStatus) el.liveModelStatus.textContent = "OpenCV待取帧";
     if (el.liveReadinessLabel) el.liveReadinessLabel.textContent = "画面已接入";
     if (el.liveReadinessDetail) el.liveReadinessDetail.textContent = "画面已接入。完整分析流程为：先点选中心标定棒建立修正，再开始实时追踪并逐帧提交给 OpenCV 识别小球中心。";
-    const trackLabel = videoTrack?.label || el.liveCameraSelect?.selectedOptions?.[0]?.textContent || "当前摄像头";
-    const settings = videoTrack?.getSettings?.() || {};
-    const streamDetail = settings.width && settings.height
-      ? `${settings.width}x${settings.height}${settings.frameRate ? ` · ${Math.round(settings.frameRate)} fps` : ""}`
-      : "浏览器自适应画质";
-    updateFileQueue("实时画面已接入", "已读取", `摄像头预览已开启：${trackLabel} · ${streamDetail}。AI识别会独立低频取帧，不再阻塞预览。`);
+    const trackLabel = stream.getVideoTracks()[0]?.label || el.liveCameraSelect?.selectedOptions?.[0]?.textContent || "当前摄像头";
+    updateFileQueue("实时画面已接入", "已读取", `摄像头预览已开启：${trackLabel}。若仍是 Mac 自带摄像头，请在设备下拉框中切换手机摄像头后重新连接。`);
     showToast("实时画面已连接。");
     await refreshCameraDevices({ silent: true });
   } catch (error) {
-    if (state.liveStream) {
-      state.liveStream.getTracks().forEach((track) => track.stop());
-      state.liveStream = null;
-    }
-    if (el.livePreview) el.livePreview.srcObject = null;
     if (el.liveCameraStatus) el.liveCameraStatus.textContent = "连接失败";
     if (el.liveReadinessDetail) el.liveReadinessDetail.textContent = "未能读取摄像头。手机可通过 USB 摄像头、采集卡、同屏软件虚拟摄像头，或 RTSP/WebRTC 推流方式接入。";
     updateFileQueue("实时画面连接失败", "失败", error.message);
@@ -2939,8 +2911,6 @@ async function startLiveRecording() {
   state.liveSampleWindowStart = performance.now();
   state.liveSampleWindowFrames = 0;
   state.liveMeasuredSampleFps = 0;
-  state.liveProcessingLatencyMs = 0;
-  state.lastLivePreviewRenderAt = 0;
   state.liveFrameScheduled = false;
   if (state.liveFrameTimer) {
     window.clearTimeout(state.liveFrameTimer);
@@ -2957,14 +2927,14 @@ async function startLiveRecording() {
   document.querySelectorAll(".chart-tabs button").forEach((button) => {
     button.classList.toggle("active", button.dataset.chart === "position");
   });
-  renderLiveTrackingPreview(true);
+  renderLiveTrackingPreview();
   if (el.startLiveRecordBtn) el.startLiveRecordBtn.disabled = true;
   if (el.stopLiveRecordBtn) el.stopLiveRecordBtn.disabled = false;
   if (el.liveCameraStatus) el.liveCameraStatus.textContent = "实时追踪中";
-  if (el.liveModelStatus) el.liveModelStatus.textContent = `AI取帧中 · 上限 ${LIVE_FRAME_TARGET_FPS} fps`;
+  if (el.liveModelStatus) el.liveModelStatus.textContent = `高频采样中 · 目标 ${LIVE_FRAME_TARGET_FPS} fps`;
   if (el.liveReadinessLabel) el.liveReadinessLabel.textContent = "实时追踪中";
   if (el.liveReadinessDetail) el.liveReadinessDetail.textContent = "后端正在逐帧识别小球中心，曲线会随轨迹点实时刷新。停止后将把轨迹送入粘度计算。";
-  updateFileQueue("正在实时追踪小球", "处理中", `摄像头预览保持 ${LIVE_CAMERA_FPS} fps；AI以最高 ${LIVE_FRAME_TARGET_FPS} fps低延迟取帧，后端返回球心坐标。`);
+  updateFileQueue("正在实时追踪小球", "处理中", `浏览器以最高 ${LIVE_FRAME_TARGET_FPS} fps 抓取手机画面，后端 OpenCV 返回球心坐标，曲线会即时更新。`);
   startLiveVideoCapture();
   scheduleLiveFrame();
   showToast("开始实时追踪，释放小球后观察曲线变化。");
@@ -3019,7 +2989,7 @@ function startLiveVideoCapture() {
     const mimeType = preferredRecordingMimeType();
     const options = {
       ...(mimeType ? { mimeType } : {}),
-      videoBitsPerSecond: LIVE_RECORDING_BITRATE,
+      videoBitsPerSecond: 8_000_000,
     };
     state.liveRecorder = new MediaRecorder(state.liveStream, options);
     state.liveRecorder.addEventListener("dataavailable", (event) => {
@@ -3117,10 +3087,9 @@ function updateLiveSampleRate(now) {
 
 function liveSampleRateText() {
   if (!Number.isFinite(state.liveMeasuredSampleFps) || state.liveMeasuredSampleFps <= 0) {
-    return `上限 ${LIVE_FRAME_TARGET_FPS} fps`;
+    return `目标 ${LIVE_FRAME_TARGET_FPS} fps`;
   }
-  const latency = state.liveProcessingLatencyMs > 0 ? ` · ${Math.round(state.liveProcessingLatencyMs)} ms` : "";
-  return `AI ${state.liveMeasuredSampleFps.toFixed(1)} fps${latency}`;
+  return `采样 ${state.liveMeasuredSampleFps.toFixed(1)} fps`;
 }
 
 async function captureLiveFrame(metadata = null) {
@@ -3151,13 +3120,9 @@ async function captureLiveFrame(metadata = null) {
   const frameIndex = state.liveTrackingFrame;
   state.liveTrackingFrame += 1;
   state.liveFramesInFlight += 1;
-  const processingStartedAt = performance.now();
+  scheduleLiveFrame();
   try {
     const result = await postLiveFrame(frameBlob, frameTimestamp, frameIndex);
-    const latency = performance.now() - processingStartedAt;
-    state.liveProcessingLatencyMs = state.liveProcessingLatencyMs > 0
-      ? state.liveProcessingLatencyMs * 0.75 + latency * 0.25
-      : latency;
     state.liveBackendFailures = 0;
     if (result.detected) {
       if (updateLiveStaticIgnoreZones(result)) {
@@ -3203,7 +3168,6 @@ async function captureLiveFrame(metadata = null) {
     }
   } finally {
     state.liveFramesInFlight = Math.max(0, state.liveFramesInFlight - 1);
-    scheduleLiveFrame();
   }
 }
 
@@ -3222,29 +3186,28 @@ function liveFrameBlob() {
   if (!video?.videoWidth || !video?.videoHeight) return Promise.resolve(null);
   const canvas = liveFrameBlob.canvas || document.createElement("canvas");
   liveFrameBlob.canvas = canvas;
-  const roi = state.roiRect;
-  let sx = 0;
-  let sy = 0;
-  let sw = video.videoWidth;
-  let sh = video.videoHeight;
-  if (roi) {
-    sx = Math.round(roi.xPct / 100 * video.videoWidth);
-    sy = Math.round(roi.yPct / 100 * video.videoHeight);
-    sw = Math.max(1, Math.round(roi.wPct / 100 * video.videoWidth));
-    sh = Math.max(1, Math.round(roi.hPct / 100 * video.videoHeight));
-  }
-  const scale = Math.min(1, LIVE_FRAME_MAX_WIDTH / sw, LIVE_FRAME_MAX_HEIGHT / sh);
-  const targetWidth = Math.max(1, Math.round(sw * scale));
-  const targetHeight = Math.max(1, Math.round(sh * scale));
+  const scale = Math.min(1, LIVE_FRAME_MAX_WIDTH / video.videoWidth);
   state.liveFrameScale = scale;
-  if (canvas.width !== targetWidth || canvas.height !== targetHeight) {
-    canvas.width = targetWidth;
-    canvas.height = targetHeight;
-    liveFrameBlob.context = null;
+
+  const roi = state.roiRect;
+  if (roi) {
+    // Crop: only send the ROI region to the backend
+    const sx = Math.round(roi.xPct / 100 * video.videoWidth);
+    const sy = Math.round(roi.yPct / 100 * video.videoHeight);
+    const sw = Math.round(roi.wPct / 100 * video.videoWidth);
+    const sh = Math.round(roi.hPct / 100 * video.videoHeight);
+    const cw = Math.max(1, Math.round(sw * scale));
+    const ch = Math.max(1, Math.round(sh * scale));
+    canvas.width = cw;
+    canvas.height = ch;
+    const frameCtx = canvas.getContext("2d", { willReadFrequently: true });
+    frameCtx.drawImage(video, sx, sy, sw, sh, 0, 0, cw, ch);
+  } else {
+    canvas.width = Math.max(1, Math.round(video.videoWidth * scale));
+    canvas.height = Math.max(1, Math.round(video.videoHeight * scale));
+    const frameCtx = canvas.getContext("2d", { willReadFrequently: true });
+    frameCtx.drawImage(video, 0, 0, canvas.width, canvas.height);
   }
-  const frameCtx = liveFrameBlob.context || canvas.getContext("2d", { alpha: false, desynchronized: true });
-  liveFrameBlob.context = frameCtx;
-  frameCtx.drawImage(video, sx, sy, sw, sh, 0, 0, targetWidth, targetHeight);
   return new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", LIVE_FRAME_JPEG_QUALITY));
 }
 
@@ -3252,9 +3215,7 @@ async function postLiveFrame(blob, frameTimestamp, frameIndex) {
   const params = new URLSearchParams({
     frame: String(frameIndex),
     t: String(frameTimestamp.toFixed(4)),
-    min_radius_px: "4",
-    max_radius_px: state.roiRect ? "120" : "80",
-    detection_mode: "realtime",
+    min_radius_px: "3",
   });
   if (state.liveIgnoreZones.length) {
     params.set("ignore_zones", JSON.stringify(state.liveIgnoreZones));
@@ -3740,10 +3701,7 @@ function terminateLiveTrackingForOffset(offset) {
   showToast("小球偏离中心线超过阈值，已终止本次实验。");
 }
 
-function renderLiveTrackingPreview(force = false) {
-  const now = performance.now();
-  if (!force && now - state.lastLivePreviewRenderAt < LIVE_PREVIEW_UI_INTERVAL_MS) return;
-  state.lastLivePreviewRenderAt = now;
+function renderLiveTrackingPreview() {
   const run = buildLivePreviewRun(state.liveTrajectory);
   state.latest = run;
   el.terminalVelocity.textContent = "--";
