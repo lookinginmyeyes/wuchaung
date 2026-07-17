@@ -1,7 +1,12 @@
-const LIVE_FRAME_TARGET_FPS = 60;
+const LIVE_CAMERA_PROFILES = [
+  { label: "稳定预览", width: 1280, height: 720, fps: 30, bitrate: 4_000_000 },
+  { label: "兼容预览", width: 960, height: 540, fps: 30, bitrate: 2_800_000 },
+  { label: "低负载预览", width: 640, height: 480, fps: 30, bitrate: 1_800_000 },
+];
+const LIVE_FRAME_TARGET_FPS = 30;
 const LIVE_FRAME_INTERVAL_MS = Math.round(1000 / LIVE_FRAME_TARGET_FPS);
-const LIVE_FRAME_MAX_WIDTH = 1920;
-const LIVE_FRAME_JPEG_QUALITY = 0.9;
+const LIVE_FRAME_MAX_WIDTH = 1280;
+const LIVE_FRAME_JPEG_QUALITY = 0.86;
 const LIVE_MIN_TRACK_CONFIDENCE = 0.38;
 const LIVE_STATIC_POINT_LIMIT = 5;
 const LIVE_STATIC_POINT_MATCH_NORM = 0.006;
@@ -40,6 +45,7 @@ const state = {
   videoUrl: null,
   archivedVideoLoadTimer: null,
   liveStream: null,
+  liveCameraProfile: null,
   liveRecorder: null,
   liveChunks: [],
   pendingLiveVideoBlob: null,
@@ -2782,6 +2788,40 @@ async function refreshCameraDevices(options = {}) {
   }
 }
 
+function buildLiveVideoConstraints(deviceId, profile) {
+  const base = deviceId ? { deviceId: { exact: deviceId } } : { facingMode: "environment" };
+  return {
+    ...base,
+    width: { ideal: profile.width, max: profile.width },
+    height: { ideal: profile.height, max: profile.height },
+    frameRate: { ideal: profile.fps, max: profile.fps },
+  };
+}
+
+async function requestLiveCameraStream(deviceId) {
+  let lastError = null;
+  for (const profile of LIVE_CAMERA_PROFILES) {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: buildLiveVideoConstraints(deviceId, profile),
+        audio: false,
+      });
+      return { stream, profile };
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  throw lastError || new Error("无法读取摄像头");
+}
+
+function liveStreamDetail(track, profile) {
+  const settings = track?.getSettings?.() || {};
+  const width = Math.round(settings.width || profile.width);
+  const height = Math.round(settings.height || profile.height);
+  const fps = Math.round(settings.frameRate || profile.fps);
+  return `${profile.label} · ${width}×${height} · ${fps} fps`;
+}
+
 async function startLiveCamera() {
   if (!navigator.mediaDevices?.getUserMedia) {
     if (el.liveCameraStatus) el.liveCameraStatus.textContent = "浏览器不支持";
@@ -2793,25 +2833,14 @@ async function startLiveCamera() {
   setButtonLoading(el.startLiveCameraBtn, true, "连接中");
   try {
     const selectedDeviceId = el.liveCameraSelect?.value || "";
-    const videoConstraints = selectedDeviceId
-      ? {
-          deviceId: { exact: selectedDeviceId },
-          width: { ideal: 1920, max: 1920 },
-          height: { ideal: 1080, max: 1080 },
-          frameRate: { ideal: 60, max: 60 },
-        }
-      : {
-          facingMode: "environment",
-          width: { ideal: 1920, max: 1920 },
-          height: { ideal: 1080, max: 1080 },
-          frameRate: { ideal: 60, max: 60 },
-        };
-    const stream = await navigator.mediaDevices.getUserMedia({
-      video: videoConstraints,
-      audio: false,
-    });
+    const { stream, profile } = await requestLiveCameraStream(selectedDeviceId);
     state.liveStream = stream;
+    state.liveCameraProfile = profile;
+    const videoTrack = stream.getVideoTracks()[0];
+    if (videoTrack && "contentHint" in videoTrack) videoTrack.contentHint = "motion";
     el.livePreview.srcObject = stream;
+    await el.livePreview.play();
+    livePreviewFrame()?.classList.add("has-live-stream");
     el.livePlaceholder.hidden = true;
     el.startLiveCameraBtn.disabled = true;
     el.stopLiveCameraBtn.disabled = false;
@@ -2823,12 +2852,20 @@ async function startLiveCamera() {
     if (el.liveCameraStatus) el.liveCameraStatus.textContent = "实时预览中";
     if (el.liveModelStatus) el.liveModelStatus.textContent = "OpenCV待取帧";
     if (el.liveReadinessLabel) el.liveReadinessLabel.textContent = "画面已接入";
-    if (el.liveReadinessDetail) el.liveReadinessDetail.textContent = "画面已接入。完整分析流程为：先点选中心标定棒建立修正，再开始实时追踪并逐帧提交给 OpenCV 识别小球中心。";
-    const trackLabel = stream.getVideoTracks()[0]?.label || el.liveCameraSelect?.selectedOptions?.[0]?.textContent || "当前摄像头";
-    updateFileQueue("实时画面已接入", "已读取", `摄像头预览已开启：${trackLabel}。若仍是 Mac 自带摄像头，请在设备下拉框中切换手机摄像头后重新连接。`);
+    const detail = liveStreamDetail(videoTrack, profile);
+    if (el.liveReadinessDetail) el.liveReadinessDetail.textContent = `画面已接入：${detail}。若仍掉帧，请在 iVCam 里关闭美颜/增强并选择 USB 连接。`;
+    const trackLabel = videoTrack?.label || el.liveCameraSelect?.selectedOptions?.[0]?.textContent || "当前摄像头";
+    updateFileQueue("实时画面已接入", "已读取", `摄像头预览已开启：${trackLabel} · ${detail}。若仍是 Mac 自带摄像头，请在设备下拉框中切换手机摄像头后重新连接。`);
     showToast("实时画面已连接。");
     await refreshCameraDevices({ silent: true });
   } catch (error) {
+    if (state.liveStream) {
+      state.liveStream.getTracks().forEach((track) => track.stop());
+      state.liveStream = null;
+    }
+    state.liveCameraProfile = null;
+    if (el.livePreview) el.livePreview.srcObject = null;
+    livePreviewFrame()?.classList.remove("has-live-stream");
     if (el.liveCameraStatus) el.liveCameraStatus.textContent = "连接失败";
     if (el.liveReadinessDetail) el.liveReadinessDetail.textContent = "未能读取摄像头。手机可通过 USB 摄像头、采集卡、同屏软件虚拟摄像头，或 RTSP/WebRTC 推流方式接入。";
     updateFileQueue("实时画面连接失败", "失败", error.message);
@@ -2847,9 +2884,11 @@ function stopLiveCamera(options = {}) {
     state.liveStream.getTracks().forEach((track) => track.stop());
     state.liveStream = null;
   }
+  state.liveCameraProfile = null;
   if (el.livePreview) {
     el.livePreview.srcObject = null;
   }
+  livePreviewFrame()?.classList.remove("has-live-stream");
   if (el.livePlaceholder) el.livePlaceholder.hidden = false;
   if (el.startLiveCameraBtn) el.startLiveCameraBtn.disabled = false;
   if (el.stopLiveCameraBtn) el.stopLiveCameraBtn.disabled = true;
@@ -2987,9 +3026,10 @@ function startLiveVideoCapture() {
   }
   try {
     const mimeType = preferredRecordingMimeType();
+    const profile = state.liveCameraProfile || LIVE_CAMERA_PROFILES[0];
     const options = {
       ...(mimeType ? { mimeType } : {}),
-      videoBitsPerSecond: 8_000_000,
+      videoBitsPerSecond: profile.bitrate,
     };
     state.liveRecorder = new MediaRecorder(state.liveStream, options);
     state.liveRecorder.addEventListener("dataavailable", (event) => {
