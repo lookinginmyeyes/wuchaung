@@ -3271,8 +3271,10 @@ function liveFrameBlob() {
 function liveFrameResizeScale(video, sourceWidth, isRoi) {
   const tinyBallMode = liveTinyBallMode();
   if (isRoi) {
-    const targetWidth = tinyBallMode ? LIVE_ROI_TINY_BALL_TARGET_WIDTH : 900;
-    return Math.max(1, Math.min(LIVE_ROI_MAX_UPSCALE, targetWidth / Math.max(sourceWidth, 1)));
+    if (tinyBallMode) {
+      return Math.max(1, Math.min(LIVE_ROI_MAX_UPSCALE, LIVE_ROI_TINY_BALL_TARGET_WIDTH / Math.max(sourceWidth, 1)));
+    }
+    return Math.min(1, LIVE_FRAME_MAX_WIDTH / Math.max(sourceWidth, 1));
   }
   const targetWidth = tinyBallMode ? LIVE_TINY_BALL_FRAME_MAX_WIDTH : LIVE_FRAME_MAX_WIDTH;
   return Math.min(1, targetWidth / Math.max(video.videoWidth || sourceWidth || 1, 1));
@@ -3320,15 +3322,24 @@ async function postLiveFrame(blob, frameTimestamp, frameIndex) {
 function liveDetectionRadiusParams() {
   const scale = estimateScaleMetersPerPixel();
   const radiusMm = finiteNumber(el.radiusMm?.value);
+  const tinyBallMode = liveTinyBallMode();
   const frameScale = Math.max(state.liveFrameScale || 1, 1e-6);
   const radiusM = radiusMm !== null && radiusMm > 0 ? radiusMm / 1000 : null;
   const radiusPx = scale && radiusM ? (radiusM / scale) * frameScale : null;
+  if (tinyBallMode) {
+    return {
+      min: LIVE_SMALL_BALL_MIN_RADIUS_PX,
+      max: Number.isFinite(radiusPx) && radiusPx > 0
+        ? Math.max(6, Math.min(72, Math.ceil(radiusPx * 4.2)))
+        : 24,
+    };
+  }
   if (!Number.isFinite(radiusPx) || radiusPx <= 0) {
-    return { min: LIVE_SMALL_BALL_MIN_RADIUS_PX, max: 24 };
+    return { min: 3, max: null };
   }
   return {
-    min: LIVE_SMALL_BALL_MIN_RADIUS_PX,
-    max: Math.max(6, Math.min(72, Math.ceil(radiusPx * 4.2))),
+    min: Math.max(3, Math.min(6, Math.floor(radiusPx * 0.5))),
+    max: Math.max(10, Math.min(90, Math.ceil(radiusPx * 2.8))),
   };
 }
 
