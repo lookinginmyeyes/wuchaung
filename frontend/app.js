@@ -6,6 +6,7 @@ const LIVE_CAMERA_PROFILES = [
 const LIVE_TINY_BALL_CAMERA_PROFILE = { label: "小球高清", width: 1920, height: 1080, fps: 30, bitrate: 6_000_000 };
 const LIVE_FRAME_TARGET_FPS = 30;
 const LIVE_FRAME_INTERVAL_MS = Math.round(1000 / LIVE_FRAME_TARGET_FPS);
+const LIVE_VIDEO_CALLBACK_FALLBACK_MS = 120;
 const LIVE_FRAME_MAX_WIDTH = 1280;
 const LIVE_TINY_BALL_FRAME_MAX_WIDTH = 1600;
 const LIVE_ROI_TINY_BALL_TARGET_WIDTH = 1180;
@@ -2986,7 +2987,7 @@ async function startLiveRecording() {
   if (el.startLiveRecordBtn) el.startLiveRecordBtn.disabled = true;
   if (el.stopLiveRecordBtn) el.stopLiveRecordBtn.disabled = false;
   if (el.liveCameraStatus) el.liveCameraStatus.textContent = "实时追踪中";
-  if (el.liveModelStatus) el.liveModelStatus.textContent = `高频采样中 · 目标 ${LIVE_FRAME_TARGET_FPS} fps`;
+  updateLiveTrackingStatus("准备采样");
   if (el.liveReadinessLabel) el.liveReadinessLabel.textContent = "实时追踪中";
   if (el.liveReadinessDetail) el.liveReadinessDetail.textContent = "后端正在逐帧识别小球中心，曲线会随轨迹点实时刷新。停止后将把轨迹送入粘度计算。";
   updateFileQueue("正在实时追踪小球", "处理中", `浏览器以最高 ${LIVE_FRAME_TARGET_FPS} fps 抓取手机画面，后端 OpenCV 返回球心坐标，曲线会即时更新。`);
@@ -3101,10 +3102,24 @@ function scheduleLiveFrame() {
   state.liveFrameScheduled = true;
   if (video?.requestVideoFrameCallback) {
     state.liveFrameRequest = video.requestVideoFrameCallback((now, metadata) => {
+      if (state.liveFrameTimer) {
+        window.clearTimeout(state.liveFrameTimer);
+        state.liveFrameTimer = null;
+      }
       state.liveFrameScheduled = false;
       state.liveFrameRequest = null;
       captureLiveFrame(metadata);
     });
+    state.liveFrameTimer = window.setTimeout(() => {
+      if (!state.liveTracking || !state.liveFrameScheduled) return;
+      if (state.liveFrameRequest !== null && video?.cancelVideoFrameCallback) {
+        video.cancelVideoFrameCallback(state.liveFrameRequest);
+      }
+      state.liveFrameRequest = null;
+      state.liveFrameScheduled = false;
+      state.liveFrameTimer = null;
+      captureLiveFrame(null);
+    }, LIVE_VIDEO_CALLBACK_FALLBACK_MS);
     return;
   }
   state.liveFrameTimer = window.setTimeout(() => {
@@ -3148,14 +3163,32 @@ function liveSampleRateText() {
   return `采样 ${state.liveMeasuredSampleFps.toFixed(1)} fps`;
 }
 
+function liveTrackingStatusText(label = "追踪中") {
+  const parts = [
+    label,
+    `采样 ${state.liveTrackingFrame} 帧`,
+    `识别 ${state.liveTrajectory.length} 点`,
+    `未识别 ${state.liveMisses} 帧`,
+    liveSampleRateText(),
+  ];
+  if (state.liveFramesInFlight > 0) parts.push(`处理中 ${state.liveFramesInFlight}`);
+  return parts.join(" · ");
+}
+
+function updateLiveTrackingStatus(label = "追踪中") {
+  if (el.liveModelStatus) el.liveModelStatus.textContent = liveTrackingStatusText(label);
+}
+
 async function captureLiveFrame(metadata = null) {
   if (!state.liveTracking) return;
   const now = performance.now();
   if (now - state.lastLiveFrameCaptureAt < LIVE_FRAME_INTERVAL_MS) {
+    updateLiveTrackingStatus("等待下一帧");
     scheduleLiveFrame();
     return;
   }
   if (state.liveFramesInFlight >= LIVE_MAX_IN_FLIGHT_FRAMES) {
+    updateLiveTrackingStatus("后端处理中");
     scheduleLiveFrame();
     return;
   }
@@ -3170,12 +3203,14 @@ async function captureLiveFrame(metadata = null) {
     : ((performance.now() - state.liveTrackingStart) / 1000);
   const frameBlob = await liveFrameBlob();
   if (!frameBlob) {
+    updateLiveTrackingStatus("等待画面帧");
     scheduleLiveFrame();
     return;
   }
   const frameIndex = state.liveTrackingFrame;
   state.liveTrackingFrame += 1;
   state.liveFramesInFlight += 1;
+  updateLiveTrackingStatus("送检中");
   scheduleLiveFrame();
   try {
     const result = await postLiveFrame(frameBlob, frameTimestamp, frameIndex);
@@ -3183,7 +3218,7 @@ async function captureLiveFrame(metadata = null) {
     if (result.detected) {
       if (updateLiveStaticIgnoreZones(result)) {
         state.liveMisses += 1;
-        if (el.liveModelStatus) el.liveModelStatus.textContent = `已屏蔽静态误判点 ${state.liveIgnoreZones.length} 个`;
+        updateLiveTrackingStatus(`已屏蔽静态点 ${state.liveIgnoreZones.length} 个`);
         return;
       }
       const point = liveDetectionToTrajectoryPoint(result);
@@ -3191,23 +3226,23 @@ async function captureLiveFrame(metadata = null) {
       if (isHighConfidence) {
         insertLiveTrajectoryPoint(point);
         if (state.liveTrajectory.length > LIVE_TRAJECTORY_LIMIT) state.liveTrajectory.shift();
-        if (el.liveModelStatus) el.liveModelStatus.textContent = `已追踪 ${state.liveTrajectory.length} 点 · ${liveSampleRateText()} · 处理中 ${state.liveFramesInFlight}`;
+        updateLiveTrackingStatus("追踪中");
         if (FALL_OFFSET_MONITOR_ENABLED) updateFallOffsetStatus(point);
         renderLiveTrackingPreview();
       } else {
         state.liveMisses += 1;
-        if (el.liveModelStatus) el.liveModelStatus.textContent = `低置信度跳过 · ${liveSampleRateText()} · 处理中 ${state.liveFramesInFlight}`;
+        updateLiveTrackingStatus("低置信度跳过");
       }
     } else {
       state.liveMisses += 1;
-      if (el.liveModelStatus) el.liveModelStatus.textContent = `未识别 ${state.liveMisses} 帧 · ${liveSampleRateText()}`;
+      updateLiveTrackingStatus("未识别");
       if (FALL_OFFSET_MONITOR_ENABLED && state.liveMisses % 4 === 1) updateFallOffsetStatus(null);
     }
   } catch (error) {
     if (error.name !== "AbortError") {
       state.liveMisses += 1;
       state.liveBackendFailures += 1;
-      if (el.liveModelStatus) el.liveModelStatus.textContent = "单帧识别失败";
+      updateLiveTrackingStatus("单帧识别失败");
       if (state.liveBackendFailures >= LIVE_BACKEND_FAILURE_LIMIT) {
         await stopLiveRecording({ calculate: false, silent: true });
         if (el.liveCameraStatus) el.liveCameraStatus.textContent = "实时预览中";
@@ -3224,6 +3259,7 @@ async function captureLiveFrame(metadata = null) {
     }
   } finally {
     state.liveFramesInFlight = Math.max(0, state.liveFramesInFlight - 1);
+    if (state.liveTracking) updateLiveTrackingStatus();
   }
 }
 
