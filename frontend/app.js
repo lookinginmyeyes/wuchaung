@@ -8,6 +8,7 @@ const LIVE_FRAME_INTERVAL_MS = Math.round(1000 / LIVE_FRAME_TARGET_FPS);
 const LIVE_FRAME_MAX_WIDTH = 1280;
 const LIVE_FRAME_JPEG_QUALITY = 0.86;
 const LIVE_MIN_TRACK_CONFIDENCE = 0.38;
+const LIVE_SMALL_BALL_MIN_RADIUS_PX = 1;
 const LIVE_STATIC_POINT_LIMIT = 5;
 const LIVE_STATIC_POINT_MATCH_NORM = 0.006;
 const LIVE_STATIC_POINT_RADIUS_NORM = 0.018;
@@ -3252,11 +3253,13 @@ function liveFrameBlob() {
 }
 
 async function postLiveFrame(blob, frameTimestamp, frameIndex) {
+  const radiusParams = liveDetectionRadiusParams();
   const params = new URLSearchParams({
     frame: String(frameIndex),
     t: String(frameTimestamp.toFixed(4)),
-    min_radius_px: "3",
+    min_radius_px: String(radiusParams.min),
   });
+  if (radiusParams.max) params.set("max_radius_px", String(radiusParams.max));
   if (state.liveIgnoreZones.length) {
     params.set("ignore_zones", JSON.stringify(state.liveIgnoreZones));
   }
@@ -3288,6 +3291,21 @@ async function postLiveFrame(blob, frameTimestamp, frameIndex) {
   return response.json();
 }
 
+function liveDetectionRadiusParams() {
+  const scale = estimateScaleMetersPerPixel();
+  const radiusMm = finiteNumber(el.radiusMm?.value);
+  const frameScale = Math.max(state.liveFrameScale || 1, 1e-6);
+  const radiusM = radiusMm !== null && radiusMm > 0 ? radiusMm / 1000 : null;
+  const radiusPx = scale && radiusM ? (radiusM / scale) * frameScale : null;
+  if (!Number.isFinite(radiusPx) || radiusPx <= 0) {
+    return { min: LIVE_SMALL_BALL_MIN_RADIUS_PX, max: null };
+  }
+  return {
+    min: Math.max(LIVE_SMALL_BALL_MIN_RADIUS_PX, Math.min(3, Math.floor(radiusPx * 0.55))),
+    max: Math.max(5, Math.min(64, Math.ceil(radiusPx * 3.2))),
+  };
+}
+
 function liveDetectionBackendPoint(result) {
   const x = finiteNumber(result?.x);
   const yPx = finiteNumber(result?.y_px);
@@ -3316,6 +3334,8 @@ function pointInLiveIgnoreZone(point) {
 }
 
 function updateLiveStaticIgnoreZones(result) {
+  const confidence = finiteNumber(result?.confidence);
+  if (confidence !== null && confidence >= LIVE_MIN_TRACK_CONFIDENCE) return false;
   const point = liveDetectionBackendPoint(result);
   if (!point) return false;
   if (pointInLiveIgnoreZone(point)) return true;
