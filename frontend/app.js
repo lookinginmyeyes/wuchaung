@@ -3796,7 +3796,9 @@ function scheduleLiveChartDraw(options = {}) {
 }
 
 function buildLivePreviewRun(trajectory) {
-  const position = trajectory.map((point) => ({ t: point.t, y: point.corrected_y ?? point.y }));
+  const timeOrigin = finiteNumber(trajectory[0]?.t) ?? 0;
+  const relativeTime = (point) => Math.max(0, (finiteNumber(point?.t) ?? timeOrigin) - timeOrigin);
+  const position = trajectory.map((point) => ({ t: relativeTime(point), y: point.corrected_y ?? point.y }));
   const velocity = [];
   for (let index = 1; index < trajectory.length; index += 1) {
     const current = trajectory[index];
@@ -3804,7 +3806,7 @@ function buildLivePreviewRun(trajectory) {
     const dt = current.t - previous.t;
     if (dt > 0) {
       velocity.push({
-        t: current.t,
+        t: relativeTime(current),
         v: Math.abs(((current.corrected_y ?? current.y) - (previous.corrected_y ?? previous.y)) / dt),
       });
     }

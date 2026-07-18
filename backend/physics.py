@@ -723,15 +723,17 @@ def estimate_velocity(frames: list[dict]) -> list[dict]:
 
 def build_frames_from_trajectory(trajectory: list[dict]) -> list[dict]:
     normalized = []
-    for index, point in enumerate(sorted(trajectory, key=lambda item: float(item.get("t", item.get("time", 0))))):
-        t = float(point.get("t", point.get("time", index * 0.02)))
+    sorted_points = sorted(trajectory, key=lambda item: float(item.get("t", item.get("time", 0))))
+    time_origin = float(sorted_points[0].get("t", sorted_points[0].get("time", 0))) if sorted_points else 0.0
+    for index, point in enumerate(sorted_points):
+        t = float(point.get("t", point.get("time", index * 0.02))) - time_origin
         y = float(point.get("corrected_y", point.get("y", point.get("position", 0))))
         x = float(point.get("x", 0.5))
         confidence = float(point.get("confidence", 0.86))
         normalized.append(
             {
                 "frame": index,
-                "t": round(t, 4),
+                "t": round(max(0.0, t), 4),
                 "x": round(max(0.0, min(1.0, x)), 5),
                 "true_y": round(y, 6),
                 "measured_y": round(float(point.get("measured_y", y)), 6),
