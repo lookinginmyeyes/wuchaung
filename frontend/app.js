@@ -3298,11 +3298,11 @@ function liveDetectionRadiusParams() {
   const radiusM = radiusMm !== null && radiusMm > 0 ? radiusMm / 1000 : null;
   const radiusPx = scale && radiusM ? (radiusM / scale) * frameScale : null;
   if (!Number.isFinite(radiusPx) || radiusPx <= 0) {
-    return { min: LIVE_SMALL_BALL_MIN_RADIUS_PX, max: null };
+    return { min: LIVE_SMALL_BALL_MIN_RADIUS_PX, max: 24 };
   }
   return {
-    min: Math.max(LIVE_SMALL_BALL_MIN_RADIUS_PX, Math.min(3, Math.floor(radiusPx * 0.55))),
-    max: Math.max(5, Math.min(64, Math.ceil(radiusPx * 3.2))),
+    min: LIVE_SMALL_BALL_MIN_RADIUS_PX,
+    max: Math.max(6, Math.min(72, Math.ceil(radiusPx * 4.2))),
   };
 }
 

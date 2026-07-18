@@ -341,6 +341,11 @@ def detect_ball(frame, config: VideoTrackConfig) -> dict[str, float | str] | Non
     frame_h, frame_w = frame.shape[:2]
     min_radius = max(1, config.min_radius_px)
     small_ball_mode = min_radius <= 2
+    if small_ball_mode:
+        upscaled_detection = _detect_upscaled_small_ball(frame, config)
+        if upscaled_detection is not None:
+            return upscaled_detection
+
     gray = cv.cvtColor(frame, cv.COLOR_BGR2GRAY)
     gray = cv.medianBlur(gray, 3 if small_ball_mode else 5)
     enhanced = cv.createCLAHE(
@@ -447,11 +452,118 @@ def detect_ball(frame, config: VideoTrackConfig) -> dict[str, float | str] | Non
         score = fill_ratio * 0.55 + compactness * 0.3 + dark_score * 0.15
         candidates.append((score, fill_ratio, area, x, y, radius))
     if not candidates:
+        if small_ball_mode:
+            return _detect_micro_dark_blob(gray, config)
         return None
     # Prefer the most circular candidate (highest fill_ratio), not just the largest
     _, fill_ratio, area, x, y, radius = sorted(candidates, key=lambda item: item[0], reverse=True)[0]
     confidence = max(0.35, min(0.78, 0.45 + fill_ratio * 0.35))
     return {"x": float(x), "y": float(y), "radius": float(radius), "confidence": confidence, "method": "contour_fallback"}
+
+
+def _detect_upscaled_small_ball(frame, config: VideoTrackConfig) -> dict[str, float | str] | None:
+    import cv2 as cv  # type: ignore
+
+    frame_h, frame_w = frame.shape[:2]
+    if frame_w <= 0 or frame_h <= 0:
+        return None
+
+    scale = 3.0
+    upscaled = cv.resize(frame, None, fx=scale, fy=scale, interpolation=cv.INTER_CUBIC)
+    original_gray = cv.cvtColor(frame, cv.COLOR_BGR2GRAY)
+    gray = cv.cvtColor(upscaled, cv.COLOR_BGR2GRAY)
+    gray = cv.GaussianBlur(gray, (3, 3), 0)
+    enhanced = cv.createCLAHE(clipLimit=3.2, tileGridSize=(8, 8)).apply(gray)
+    min_radius = max(2, int(max(1, config.min_radius_px) * scale * 0.7))
+    if config.max_radius_px is not None:
+        max_radius = max(min_radius + 2, int(config.max_radius_px * scale * 1.25))
+    else:
+        max_radius = 30
+
+    candidates = []
+    sources = ((gray, "small_ball_upscaled_hough"), (enhanced, "small_ball_upscaled_hough_enhanced"))
+    trials = ((60, 10, 0.58), (45, 7, 0.52), (30, 5, 0.46), (22, 4, 0.4))
+    for source, method in sources:
+        for param1, param2, base_confidence in trials:
+            hough = cv.HoughCircles(
+                source,
+                cv.HOUGH_GRADIENT,
+                dp=1.05,
+                minDist=max(5, min_radius * 2),
+                param1=param1,
+                param2=param2,
+                minRadius=min_radius,
+                maxRadius=max_radius,
+            )
+            if hough is None or len(hough[0]) <= 0:
+                continue
+            for item in hough[0]:
+                x = float(item[0]) / scale
+                y = float(item[1]) / scale
+                radius = float(item[2]) / scale
+                if _is_ignored_detection(x, y, frame_w, frame_h, config):
+                    continue
+                if config.max_radius_px is not None and radius > config.max_radius_px:
+                    continue
+                dark_score = _dark_blob_score(original_gray, x, y, max(1.0, radius))
+                if dark_score < 0.1:
+                    continue
+                confidence = max(0.38, min(0.72, base_confidence + dark_score * 0.12))
+                candidates.append((dark_score, confidence, x, y, radius, method))
+    if not candidates:
+        return None
+
+    _, confidence, x, y, radius, method = sorted(candidates, key=lambda item: (item[0], item[1]), reverse=True)[0]
+    return {"x": float(x), "y": float(y), "radius": float(radius), "confidence": confidence, "method": method}
+
+
+def _detect_micro_dark_blob(gray, config: VideoTrackConfig) -> dict[str, float | str] | None:
+    import cv2 as cv  # type: ignore
+    import numpy as np  # type: ignore
+
+    height, width = gray.shape[:2]
+    if width <= 0 or height <= 0:
+        return None
+
+    background = cv.GaussianBlur(gray, (0, 0), 4.0)
+    response = cv.subtract(background, gray)
+    response = cv.GaussianBlur(response, (3, 3), 0)
+    cutoff = max(5.0, min(38.0, float(np.percentile(response, 99.55)) * 0.68))
+    _, binary = cv.threshold(response, cutoff, 255, cv.THRESH_BINARY)
+    kernel = cv.getStructuringElement(cv.MORPH_ELLIPSE, (2, 2))
+    binary = cv.morphologyEx(binary, cv.MORPH_CLOSE, kernel)
+    contours, _ = cv.findContours(binary, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)
+
+    max_radius = float(config.max_radius_px or 12)
+    candidates = []
+    for contour in contours:
+        area = cv.contourArea(contour)
+        if area < 0.3:
+            continue
+        (x, y), radius = cv.minEnclosingCircle(contour)
+        if radius < 0.35 or radius > max_radius:
+            continue
+        if _is_ignored_detection(float(x), float(y), width, height, config):
+            continue
+        bx, by, bw, bh = cv.boundingRect(contour)
+        aspect = max(bw, bh) / max(min(bw, bh), 1)
+        if aspect > 5.2:
+            continue
+        mask = np.zeros_like(gray, dtype=np.uint8)
+        cv.drawContours(mask, [contour], -1, 255, -1)
+        response_mean = float(cv.mean(response, mask=mask)[0])
+        dark_score = _dark_blob_score(gray, float(x), float(y), max(1.0, float(radius)))
+        if response_mean < cutoff * 0.9 and dark_score < 0.08:
+            continue
+        circularity = min(1.0, (4 * math.pi * max(area, 0.1)) / max(1.0, cv.arcLength(contour, True) ** 2))
+        score = response_mean * 0.55 + dark_score * 24 + circularity * 8 - abs(aspect - 1.0) * 1.5
+        candidates.append((score, response_mean, dark_score, x, y, radius))
+    if not candidates:
+        return None
+
+    score, response_mean, dark_score, x, y, radius = sorted(candidates, key=lambda item: item[0], reverse=True)[0]
+    confidence = max(0.39, min(0.62, 0.36 + dark_score * 0.16 + min(0.16, response_mean / 160.0)))
+    return {"x": float(x), "y": float(y), "radius": float(radius), "confidence": confidence, "method": "micro_dark_blob"}
 
 
 def _is_ignored_detection(x_px: float, y_px: float, width: int, height: int, config: VideoTrackConfig) -> bool:
