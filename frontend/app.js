@@ -3,17 +3,11 @@ const LIVE_CAMERA_PROFILES = [
   { label: "兼容预览", width: 960, height: 540, fps: 30, bitrate: 2_800_000 },
   { label: "低负载预览", width: 640, height: 480, fps: 30, bitrate: 1_800_000 },
 ];
-const LIVE_TINY_BALL_CAMERA_PROFILE = { label: "小球高清", width: 1920, height: 1080, fps: 30, bitrate: 6_000_000 };
 const LIVE_FRAME_TARGET_FPS = 30;
 const LIVE_FRAME_INTERVAL_MS = Math.round(1000 / LIVE_FRAME_TARGET_FPS);
-const LIVE_VIDEO_CALLBACK_FALLBACK_MS = 120;
 const LIVE_FRAME_MAX_WIDTH = 1280;
-const LIVE_TINY_BALL_FRAME_MAX_WIDTH = 1600;
-const LIVE_ROI_TINY_BALL_TARGET_WIDTH = 1180;
-const LIVE_ROI_MAX_UPSCALE = 3.8;
 const LIVE_FRAME_JPEG_QUALITY = 0.86;
 const LIVE_MIN_TRACK_CONFIDENCE = 0.38;
-const LIVE_SMALL_BALL_MIN_RADIUS_PX = 1;
 const LIVE_STATIC_POINT_LIMIT = 5;
 const LIVE_STATIC_POINT_MATCH_NORM = 0.006;
 const LIVE_STATIC_POINT_RADIUS_NORM = 0.018;
@@ -2806,7 +2800,7 @@ function buildLiveVideoConstraints(deviceId, profile) {
 
 async function requestLiveCameraStream(deviceId) {
   let lastError = null;
-  for (const profile of liveCameraProfilesForCurrentInputs()) {
+  for (const profile of LIVE_CAMERA_PROFILES) {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: buildLiveVideoConstraints(deviceId, profile),
@@ -2818,17 +2812,6 @@ async function requestLiveCameraStream(deviceId) {
     }
   }
   throw lastError || new Error("无法读取摄像头");
-}
-
-function liveCameraProfilesForCurrentInputs() {
-  return liveTinyBallMode()
-    ? [LIVE_TINY_BALL_CAMERA_PROFILE, ...LIVE_CAMERA_PROFILES]
-    : LIVE_CAMERA_PROFILES;
-}
-
-function liveTinyBallMode() {
-  const radiusMm = finiteNumber(el.radiusMm?.value);
-  return radiusMm !== null && radiusMm <= 1.05;
 }
 
 function liveStreamDetail(track, profile) {
@@ -2987,7 +2970,7 @@ async function startLiveRecording() {
   if (el.startLiveRecordBtn) el.startLiveRecordBtn.disabled = true;
   if (el.stopLiveRecordBtn) el.stopLiveRecordBtn.disabled = false;
   if (el.liveCameraStatus) el.liveCameraStatus.textContent = "实时追踪中";
-  updateLiveTrackingStatus("准备采样");
+  if (el.liveModelStatus) el.liveModelStatus.textContent = `高频采样中 · 目标 ${LIVE_FRAME_TARGET_FPS} fps`;
   if (el.liveReadinessLabel) el.liveReadinessLabel.textContent = "实时追踪中";
   if (el.liveReadinessDetail) el.liveReadinessDetail.textContent = "后端正在逐帧识别小球中心，曲线会随轨迹点实时刷新。停止后将把轨迹送入粘度计算。";
   updateFileQueue("正在实时追踪小球", "处理中", `浏览器以最高 ${LIVE_FRAME_TARGET_FPS} fps 抓取手机画面，后端 OpenCV 返回球心坐标，曲线会即时更新。`);
@@ -3102,24 +3085,10 @@ function scheduleLiveFrame() {
   state.liveFrameScheduled = true;
   if (video?.requestVideoFrameCallback) {
     state.liveFrameRequest = video.requestVideoFrameCallback((now, metadata) => {
-      if (state.liveFrameTimer) {
-        window.clearTimeout(state.liveFrameTimer);
-        state.liveFrameTimer = null;
-      }
       state.liveFrameScheduled = false;
       state.liveFrameRequest = null;
       captureLiveFrame(metadata);
     });
-    state.liveFrameTimer = window.setTimeout(() => {
-      if (!state.liveTracking || !state.liveFrameScheduled) return;
-      if (state.liveFrameRequest !== null && video?.cancelVideoFrameCallback) {
-        video.cancelVideoFrameCallback(state.liveFrameRequest);
-      }
-      state.liveFrameRequest = null;
-      state.liveFrameScheduled = false;
-      state.liveFrameTimer = null;
-      captureLiveFrame(null);
-    }, LIVE_VIDEO_CALLBACK_FALLBACK_MS);
     return;
   }
   state.liveFrameTimer = window.setTimeout(() => {
@@ -3163,32 +3132,14 @@ function liveSampleRateText() {
   return `采样 ${state.liveMeasuredSampleFps.toFixed(1)} fps`;
 }
 
-function liveTrackingStatusText(label = "追踪中") {
-  const parts = [
-    label,
-    `采样 ${state.liveTrackingFrame} 帧`,
-    `识别 ${state.liveTrajectory.length} 点`,
-    `未识别 ${state.liveMisses} 帧`,
-    liveSampleRateText(),
-  ];
-  if (state.liveFramesInFlight > 0) parts.push(`处理中 ${state.liveFramesInFlight}`);
-  return parts.join(" · ");
-}
-
-function updateLiveTrackingStatus(label = "追踪中") {
-  if (el.liveModelStatus) el.liveModelStatus.textContent = liveTrackingStatusText(label);
-}
-
 async function captureLiveFrame(metadata = null) {
   if (!state.liveTracking) return;
   const now = performance.now();
   if (now - state.lastLiveFrameCaptureAt < LIVE_FRAME_INTERVAL_MS) {
-    updateLiveTrackingStatus("等待下一帧");
     scheduleLiveFrame();
     return;
   }
   if (state.liveFramesInFlight >= LIVE_MAX_IN_FLIGHT_FRAMES) {
-    updateLiveTrackingStatus("后端处理中");
     scheduleLiveFrame();
     return;
   }
@@ -3203,14 +3154,12 @@ async function captureLiveFrame(metadata = null) {
     : ((performance.now() - state.liveTrackingStart) / 1000);
   const frameBlob = await liveFrameBlob();
   if (!frameBlob) {
-    updateLiveTrackingStatus("等待画面帧");
     scheduleLiveFrame();
     return;
   }
   const frameIndex = state.liveTrackingFrame;
   state.liveTrackingFrame += 1;
   state.liveFramesInFlight += 1;
-  updateLiveTrackingStatus("送检中");
   scheduleLiveFrame();
   try {
     const result = await postLiveFrame(frameBlob, frameTimestamp, frameIndex);
@@ -3218,7 +3167,7 @@ async function captureLiveFrame(metadata = null) {
     if (result.detected) {
       if (updateLiveStaticIgnoreZones(result)) {
         state.liveMisses += 1;
-        updateLiveTrackingStatus(`已屏蔽静态点 ${state.liveIgnoreZones.length} 个`);
+        if (el.liveModelStatus) el.liveModelStatus.textContent = `已屏蔽静态误判点 ${state.liveIgnoreZones.length} 个`;
         return;
       }
       const point = liveDetectionToTrajectoryPoint(result);
@@ -3226,23 +3175,23 @@ async function captureLiveFrame(metadata = null) {
       if (isHighConfidence) {
         insertLiveTrajectoryPoint(point);
         if (state.liveTrajectory.length > LIVE_TRAJECTORY_LIMIT) state.liveTrajectory.shift();
-        updateLiveTrackingStatus("追踪中");
+        if (el.liveModelStatus) el.liveModelStatus.textContent = `已追踪 ${state.liveTrajectory.length} 点 · ${liveSampleRateText()} · 处理中 ${state.liveFramesInFlight}`;
         if (FALL_OFFSET_MONITOR_ENABLED) updateFallOffsetStatus(point);
         renderLiveTrackingPreview();
       } else {
         state.liveMisses += 1;
-        updateLiveTrackingStatus("低置信度跳过");
+        if (el.liveModelStatus) el.liveModelStatus.textContent = `低置信度跳过 · ${liveSampleRateText()} · 处理中 ${state.liveFramesInFlight}`;
       }
     } else {
       state.liveMisses += 1;
-      updateLiveTrackingStatus("未识别");
+      if (el.liveModelStatus) el.liveModelStatus.textContent = `未识别 ${state.liveMisses} 帧 · ${liveSampleRateText()}`;
       if (FALL_OFFSET_MONITOR_ENABLED && state.liveMisses % 4 === 1) updateFallOffsetStatus(null);
     }
   } catch (error) {
     if (error.name !== "AbortError") {
       state.liveMisses += 1;
       state.liveBackendFailures += 1;
-      updateLiveTrackingStatus("单帧识别失败");
+      if (el.liveModelStatus) el.liveModelStatus.textContent = "单帧识别失败";
       if (state.liveBackendFailures >= LIVE_BACKEND_FAILURE_LIMIT) {
         await stopLiveRecording({ calculate: false, silent: true });
         if (el.liveCameraStatus) el.liveCameraStatus.textContent = "实时预览中";
@@ -3259,7 +3208,6 @@ async function captureLiveFrame(metadata = null) {
     }
   } finally {
     state.liveFramesInFlight = Math.max(0, state.liveFramesInFlight - 1);
-    if (state.liveTracking) updateLiveTrackingStatus();
   }
 }
 
@@ -3278,15 +3226,16 @@ function liveFrameBlob() {
   if (!video?.videoWidth || !video?.videoHeight) return Promise.resolve(null);
   const canvas = liveFrameBlob.canvas || document.createElement("canvas");
   liveFrameBlob.canvas = canvas;
+  const scale = Math.min(1, LIVE_FRAME_MAX_WIDTH / video.videoWidth);
+  state.liveFrameScale = scale;
 
   const roi = state.roiRect;
   if (roi) {
+    // Crop: only send the ROI region to the backend
     const sx = Math.round(roi.xPct / 100 * video.videoWidth);
     const sy = Math.round(roi.yPct / 100 * video.videoHeight);
-    const sw = Math.max(1, Math.round(roi.wPct / 100 * video.videoWidth));
-    const sh = Math.max(1, Math.round(roi.hPct / 100 * video.videoHeight));
-    const scale = liveFrameResizeScale(video, sw, true);
-    state.liveFrameScale = scale;
+    const sw = Math.round(roi.wPct / 100 * video.videoWidth);
+    const sh = Math.round(roi.hPct / 100 * video.videoHeight);
     const cw = Math.max(1, Math.round(sw * scale));
     const ch = Math.max(1, Math.round(sh * scale));
     canvas.width = cw;
@@ -3294,8 +3243,6 @@ function liveFrameBlob() {
     const frameCtx = canvas.getContext("2d", { willReadFrequently: true });
     frameCtx.drawImage(video, sx, sy, sw, sh, 0, 0, cw, ch);
   } else {
-    const scale = liveFrameResizeScale(video, video.videoWidth, false);
-    state.liveFrameScale = scale;
     canvas.width = Math.max(1, Math.round(video.videoWidth * scale));
     canvas.height = Math.max(1, Math.round(video.videoHeight * scale));
     const frameCtx = canvas.getContext("2d", { willReadFrequently: true });
@@ -3304,26 +3251,12 @@ function liveFrameBlob() {
   return new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", LIVE_FRAME_JPEG_QUALITY));
 }
 
-function liveFrameResizeScale(video, sourceWidth, isRoi) {
-  const tinyBallMode = liveTinyBallMode();
-  if (isRoi) {
-    if (tinyBallMode) {
-      return Math.max(1, Math.min(LIVE_ROI_MAX_UPSCALE, LIVE_ROI_TINY_BALL_TARGET_WIDTH / Math.max(sourceWidth, 1)));
-    }
-    return Math.min(1, LIVE_FRAME_MAX_WIDTH / Math.max(sourceWidth, 1));
-  }
-  const targetWidth = tinyBallMode ? LIVE_TINY_BALL_FRAME_MAX_WIDTH : LIVE_FRAME_MAX_WIDTH;
-  return Math.min(1, targetWidth / Math.max(video.videoWidth || sourceWidth || 1, 1));
-}
-
 async function postLiveFrame(blob, frameTimestamp, frameIndex) {
-  const radiusParams = liveDetectionRadiusParams();
   const params = new URLSearchParams({
     frame: String(frameIndex),
     t: String(frameTimestamp.toFixed(4)),
-    min_radius_px: String(radiusParams.min),
+    min_radius_px: "3",
   });
-  if (radiusParams.max) params.set("max_radius_px", String(radiusParams.max));
   if (state.liveIgnoreZones.length) {
     params.set("ignore_zones", JSON.stringify(state.liveIgnoreZones));
   }
@@ -3355,30 +3288,6 @@ async function postLiveFrame(blob, frameTimestamp, frameIndex) {
   return response.json();
 }
 
-function liveDetectionRadiusParams() {
-  const scale = estimateScaleMetersPerPixel();
-  const radiusMm = finiteNumber(el.radiusMm?.value);
-  const tinyBallMode = liveTinyBallMode();
-  const frameScale = Math.max(state.liveFrameScale || 1, 1e-6);
-  const radiusM = radiusMm !== null && radiusMm > 0 ? radiusMm / 1000 : null;
-  const radiusPx = scale && radiusM ? (radiusM / scale) * frameScale : null;
-  if (tinyBallMode) {
-    return {
-      min: LIVE_SMALL_BALL_MIN_RADIUS_PX,
-      max: Number.isFinite(radiusPx) && radiusPx > 0
-        ? Math.max(6, Math.min(72, Math.ceil(radiusPx * 4.2)))
-        : 24,
-    };
-  }
-  if (!Number.isFinite(radiusPx) || radiusPx <= 0) {
-    return { min: 3, max: null };
-  }
-  return {
-    min: Math.max(3, Math.min(6, Math.floor(radiusPx * 0.5))),
-    max: Math.max(10, Math.min(90, Math.ceil(radiusPx * 2.8))),
-  };
-}
-
 function liveDetectionBackendPoint(result) {
   const x = finiteNumber(result?.x);
   const yPx = finiteNumber(result?.y_px);
@@ -3407,8 +3316,6 @@ function pointInLiveIgnoreZone(point) {
 }
 
 function updateLiveStaticIgnoreZones(result) {
-  const confidence = finiteNumber(result?.confidence);
-  if (confidence !== null && confidence >= LIVE_MIN_TRACK_CONFIDENCE) return false;
   const point = liveDetectionBackendPoint(result);
   if (!point) return false;
   if (pointInLiveIgnoreZone(point)) return true;
