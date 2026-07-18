@@ -356,7 +356,7 @@ def detect_ball(frame, config: VideoTrackConfig) -> dict[str, float | str] | Non
     hough_trials = ((90, 28, 0.88), (70, 18, 0.78), (55, 14, 0.68))
     if small_ball_mode:
         hough_trials = (*hough_trials, (45, 10, 0.6), (35, 8, 0.54), (25, 5, 0.46))
-    dark_score_floor = 0.18 if small_ball_mode else 0.26
+    dark_score_floor = 0.12 if small_ball_mode else 0.26
     for source, method in hough_sources:
         for param1, param2, confidence in hough_trials:
             hough = cv.HoughCircles(
@@ -468,13 +468,13 @@ def _detect_upscaled_small_ball(frame, config: VideoTrackConfig) -> dict[str, fl
     if frame_w <= 0 or frame_h <= 0:
         return None
 
-    scale = 3.0
+    scale = 4.0
     upscaled = cv.resize(frame, None, fx=scale, fy=scale, interpolation=cv.INTER_CUBIC)
     original_gray = cv.cvtColor(frame, cv.COLOR_BGR2GRAY)
     gray = cv.cvtColor(upscaled, cv.COLOR_BGR2GRAY)
     gray = cv.GaussianBlur(gray, (3, 3), 0)
     enhanced = cv.createCLAHE(clipLimit=3.2, tileGridSize=(8, 8)).apply(gray)
-    min_radius = max(2, int(max(1, config.min_radius_px) * scale * 0.7))
+    min_radius = max(1, int(max(1, config.min_radius_px) * scale * 0.55))
     if config.max_radius_px is not None:
         max_radius = max(min_radius + 2, int(config.max_radius_px * scale * 1.25))
     else:
@@ -482,7 +482,7 @@ def _detect_upscaled_small_ball(frame, config: VideoTrackConfig) -> dict[str, fl
 
     candidates = []
     sources = ((gray, "small_ball_upscaled_hough"), (enhanced, "small_ball_upscaled_hough_enhanced"))
-    trials = ((60, 10, 0.58), (45, 7, 0.52), (30, 5, 0.46), (22, 4, 0.4))
+    trials = ((60, 10, 0.58), (45, 7, 0.52), (30, 5, 0.46), (22, 4, 0.4), (16, 3, 0.38))
     for source, method in sources:
         for param1, param2, base_confidence in trials:
             hough = cv.HoughCircles(
@@ -506,9 +506,9 @@ def _detect_upscaled_small_ball(frame, config: VideoTrackConfig) -> dict[str, fl
                 if config.max_radius_px is not None and radius > config.max_radius_px:
                     continue
                 dark_score = _dark_blob_score(original_gray, x, y, max(1.0, radius))
-                if dark_score < 0.1:
+                if dark_score < 0.055:
                     continue
-                confidence = max(0.38, min(0.72, base_confidence + dark_score * 0.12))
+                confidence = max(0.38, min(0.74, base_confidence + dark_score * 0.14))
                 candidates.append((dark_score, confidence, x, y, radius, method))
     if not candidates:
         return None
@@ -528,7 +528,7 @@ def _detect_micro_dark_blob(gray, config: VideoTrackConfig) -> dict[str, float |
     background = cv.GaussianBlur(gray, (0, 0), 4.0)
     response = cv.subtract(background, gray)
     response = cv.GaussianBlur(response, (3, 3), 0)
-    cutoff = max(5.0, min(38.0, float(np.percentile(response, 99.55)) * 0.68))
+    cutoff = max(3.0, min(34.0, float(np.percentile(response, 99.25)) * 0.55))
     _, binary = cv.threshold(response, cutoff, 255, cv.THRESH_BINARY)
     kernel = cv.getStructuringElement(cv.MORPH_ELLIPSE, (2, 2))
     binary = cv.morphologyEx(binary, cv.MORPH_CLOSE, kernel)
@@ -541,7 +541,7 @@ def _detect_micro_dark_blob(gray, config: VideoTrackConfig) -> dict[str, float |
         if area < 0.3:
             continue
         (x, y), radius = cv.minEnclosingCircle(contour)
-        if radius < 0.35 or radius > max_radius:
+        if radius < 0.2 or radius > max_radius:
             continue
         if _is_ignored_detection(float(x), float(y), width, height, config):
             continue
@@ -553,7 +553,7 @@ def _detect_micro_dark_blob(gray, config: VideoTrackConfig) -> dict[str, float |
         cv.drawContours(mask, [contour], -1, 255, -1)
         response_mean = float(cv.mean(response, mask=mask)[0])
         dark_score = _dark_blob_score(gray, float(x), float(y), max(1.0, float(radius)))
-        if response_mean < cutoff * 0.9 and dark_score < 0.08:
+        if response_mean < cutoff * 0.72 and dark_score < 0.045:
             continue
         circularity = min(1.0, (4 * math.pi * max(area, 0.1)) / max(1.0, cv.arcLength(contour, True) ** 2))
         score = response_mean * 0.55 + dark_score * 24 + circularity * 8 - abs(aspect - 1.0) * 1.5

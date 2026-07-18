@@ -50,6 +50,20 @@ class SmallBallDetectionTests(unittest.TestCase):
         self.assertAlmostEqual(detection["x"], 154, delta=5)
         self.assertAlmostEqual(detection["y"], 86, delta=6)
 
+    def test_detects_one_pixel_scale_dark_spot(self):
+        cv, np = self._opencv()
+        frame = np.full((180, 240, 3), 210, dtype=np.uint8)
+        cv.circle(frame, (178, 49), 1, (36, 36, 36), -1, lineType=cv.LINE_AA)
+        ok, encoded = cv.imencode(".jpg", frame, [int(cv.IMWRITE_JPEG_QUALITY), 80])
+        self.assertTrue(ok)
+        decoded = cv.imdecode(encoded, cv.IMREAD_COLOR)
+
+        detection = detect_ball(decoded, VideoTrackConfig(min_radius_px=1, max_radius_px=6))
+
+        self.assertIsNotNone(detection)
+        self.assertAlmostEqual(detection["x"], 178, delta=5)
+        self.assertAlmostEqual(detection["y"], 49, delta=5)
+
 
 if __name__ == "__main__":
     unittest.main()

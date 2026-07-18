@@ -3,9 +3,13 @@ const LIVE_CAMERA_PROFILES = [
   { label: "兼容预览", width: 960, height: 540, fps: 30, bitrate: 2_800_000 },
   { label: "低负载预览", width: 640, height: 480, fps: 30, bitrate: 1_800_000 },
 ];
+const LIVE_TINY_BALL_CAMERA_PROFILE = { label: "小球高清", width: 1920, height: 1080, fps: 30, bitrate: 6_000_000 };
 const LIVE_FRAME_TARGET_FPS = 30;
 const LIVE_FRAME_INTERVAL_MS = Math.round(1000 / LIVE_FRAME_TARGET_FPS);
 const LIVE_FRAME_MAX_WIDTH = 1280;
+const LIVE_TINY_BALL_FRAME_MAX_WIDTH = 1600;
+const LIVE_ROI_TINY_BALL_TARGET_WIDTH = 1180;
+const LIVE_ROI_MAX_UPSCALE = 3.8;
 const LIVE_FRAME_JPEG_QUALITY = 0.86;
 const LIVE_MIN_TRACK_CONFIDENCE = 0.38;
 const LIVE_SMALL_BALL_MIN_RADIUS_PX = 1;
@@ -2801,7 +2805,7 @@ function buildLiveVideoConstraints(deviceId, profile) {
 
 async function requestLiveCameraStream(deviceId) {
   let lastError = null;
-  for (const profile of LIVE_CAMERA_PROFILES) {
+  for (const profile of liveCameraProfilesForCurrentInputs()) {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: buildLiveVideoConstraints(deviceId, profile),
@@ -2813,6 +2817,17 @@ async function requestLiveCameraStream(deviceId) {
     }
   }
   throw lastError || new Error("无法读取摄像头");
+}
+
+function liveCameraProfilesForCurrentInputs() {
+  return liveTinyBallMode()
+    ? [LIVE_TINY_BALL_CAMERA_PROFILE, ...LIVE_CAMERA_PROFILES]
+    : LIVE_CAMERA_PROFILES;
+}
+
+function liveTinyBallMode() {
+  const radiusMm = finiteNumber(el.radiusMm?.value);
+  return radiusMm !== null && radiusMm <= 1.05;
 }
 
 function liveStreamDetail(track, profile) {
@@ -3227,16 +3242,15 @@ function liveFrameBlob() {
   if (!video?.videoWidth || !video?.videoHeight) return Promise.resolve(null);
   const canvas = liveFrameBlob.canvas || document.createElement("canvas");
   liveFrameBlob.canvas = canvas;
-  const scale = Math.min(1, LIVE_FRAME_MAX_WIDTH / video.videoWidth);
-  state.liveFrameScale = scale;
 
   const roi = state.roiRect;
   if (roi) {
-    // Crop: only send the ROI region to the backend
     const sx = Math.round(roi.xPct / 100 * video.videoWidth);
     const sy = Math.round(roi.yPct / 100 * video.videoHeight);
-    const sw = Math.round(roi.wPct / 100 * video.videoWidth);
-    const sh = Math.round(roi.hPct / 100 * video.videoHeight);
+    const sw = Math.max(1, Math.round(roi.wPct / 100 * video.videoWidth));
+    const sh = Math.max(1, Math.round(roi.hPct / 100 * video.videoHeight));
+    const scale = liveFrameResizeScale(video, sw, true);
+    state.liveFrameScale = scale;
     const cw = Math.max(1, Math.round(sw * scale));
     const ch = Math.max(1, Math.round(sh * scale));
     canvas.width = cw;
@@ -3244,12 +3258,24 @@ function liveFrameBlob() {
     const frameCtx = canvas.getContext("2d", { willReadFrequently: true });
     frameCtx.drawImage(video, sx, sy, sw, sh, 0, 0, cw, ch);
   } else {
+    const scale = liveFrameResizeScale(video, video.videoWidth, false);
+    state.liveFrameScale = scale;
     canvas.width = Math.max(1, Math.round(video.videoWidth * scale));
     canvas.height = Math.max(1, Math.round(video.videoHeight * scale));
     const frameCtx = canvas.getContext("2d", { willReadFrequently: true });
     frameCtx.drawImage(video, 0, 0, canvas.width, canvas.height);
   }
   return new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", LIVE_FRAME_JPEG_QUALITY));
+}
+
+function liveFrameResizeScale(video, sourceWidth, isRoi) {
+  const tinyBallMode = liveTinyBallMode();
+  if (isRoi) {
+    const targetWidth = tinyBallMode ? LIVE_ROI_TINY_BALL_TARGET_WIDTH : 900;
+    return Math.max(1, Math.min(LIVE_ROI_MAX_UPSCALE, targetWidth / Math.max(sourceWidth, 1)));
+  }
+  const targetWidth = tinyBallMode ? LIVE_TINY_BALL_FRAME_MAX_WIDTH : LIVE_FRAME_MAX_WIDTH;
+  return Math.min(1, targetWidth / Math.max(video.videoWidth || sourceWidth || 1, 1));
 }
 
 async function postLiveFrame(blob, frameTimestamp, frameIndex) {
